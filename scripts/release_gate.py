@@ -18,6 +18,8 @@ ALLOWED_FAKE_PII_FILES = {
     "tests/test_rag_runtime.py",
     "tests/test_node_agent.py",
     "tests/test_e2e.py",
+    "tests/test_quarantine_external_cdr.py",
+    "tests/test_quarantine_gateway.py",
     "samples/policy_corpus.jsonl",
 }
 
@@ -67,6 +69,7 @@ def check_required_files() -> tuple[bool, str]:
         "packages/govmesh_runtime/providers.py",
         "scripts/build_evidence_package.py",
         "scripts/govmesh_doctor.py",
+        "scripts/generate_local_tokens.py",
         "scripts/install_windows_service.ps1",
     ]
     missing = [path for path in required if not (ROOT / path).exists()]

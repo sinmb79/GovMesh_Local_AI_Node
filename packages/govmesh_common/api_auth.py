@@ -10,6 +10,8 @@ from typing import Iterable
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from packages.govmesh_identity import verify_proxy_identity
+
 
 ALL_ROLES = frozenset({"agent", "operator", "auditor", "importer", "approver"})
 
@@ -37,8 +39,10 @@ class ApiAuthPolicy:
         *,
         enabled: bool = True,
         allowed_client_fingerprints: Iterable[str] | None = None,
+        trusted_proxy_secret: str | bytes | None = None,
     ) -> None:
         self.enabled = enabled
+        self._trusted_proxy_secret = trusted_proxy_secret
         self._allowed_client_fingerprints = frozenset(
             _normalize_fingerprint(fingerprint) for fingerprint in (allowed_client_fingerprints or []) if fingerprint
         )
@@ -80,7 +84,11 @@ class ApiAuthPolicy:
         if not token_roles and not required:
             return cls.disabled()
         allowed_fingerprints = _split_env_list(os.environ.get("GOVMESH_ALLOWED_CLIENT_FINGERPRINTS"))
-        return cls(token_roles, allowed_client_fingerprints=allowed_fingerprints)
+        return cls(
+            token_roles,
+            allowed_client_fingerprints=allowed_fingerprints,
+            trusted_proxy_secret=os.environ.get("GOVMESH_TRUSTED_PROXY_SECRET"),
+        )
 
     def authenticate(
         self,
@@ -88,15 +96,30 @@ class ApiAuthPolicy:
         required_roles: Iterable[str],
         *,
         client_fingerprint: str | None = None,
+        proxy_user: str | None = None,
+        proxy_roles: str | None = None,
+        proxy_issued_at: str | None = None,
+        proxy_signature: str | None = None,
     ) -> Principal:
         if not self.enabled:
             return Principal(actor="anonymous-dev", roles=ALL_ROLES, client_fingerprint=client_fingerprint)
+        normalized_fingerprint = _normalize_fingerprint(client_fingerprint) if client_fingerprint else None
+        proxy_principal = self._authenticate_proxy(
+            proxy_user=proxy_user,
+            proxy_roles=proxy_roles,
+            proxy_issued_at=proxy_issued_at,
+            proxy_signature=proxy_signature,
+            client_fingerprint=normalized_fingerprint,
+        )
+        if proxy_principal is not None:
+            if required_roles and not proxy_principal.has_any_role(required_roles):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient API role")
+            return proxy_principal
         if not token:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authorization: Bearer token is required",
             )
-        normalized_fingerprint = _normalize_fingerprint(client_fingerprint) if client_fingerprint else None
         if self._allowed_client_fingerprints and normalized_fingerprint not in self._allowed_client_fingerprints:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Client certificate fingerprint is not allowed")
         roles = self._lookup_roles(token)
@@ -106,6 +129,31 @@ class ApiAuthPolicy:
         if required_roles and not principal.has_any_role(required_roles):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient API role")
         return principal
+
+    def _authenticate_proxy(
+        self,
+        *,
+        proxy_user: str | None,
+        proxy_roles: str | None,
+        proxy_issued_at: str | None,
+        proxy_signature: str | None,
+        client_fingerprint: str | None,
+    ) -> Principal | None:
+        if not self._trusted_proxy_secret:
+            return None
+        identity = verify_proxy_identity(
+            secret=self._trusted_proxy_secret,
+            user_id=proxy_user,
+            roles=proxy_roles,
+            issued_at=proxy_issued_at,
+            signature=proxy_signature,
+            client_fingerprint=client_fingerprint,
+        )
+        if identity is None:
+            return None
+        if self._allowed_client_fingerprints and identity.client_fingerprint not in self._allowed_client_fingerprints:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Client certificate fingerprint is not allowed")
+        return Principal(actor=f"sso:{identity.user_id}", roles=identity.roles, client_fingerprint=identity.client_fingerprint)
 
     def _lookup_roles(self, token: str) -> frozenset[str] | None:
         for candidate, roles in self._token_roles.items():
@@ -121,9 +169,21 @@ def require_roles(policy: ApiAuthPolicy, *required_roles: str):
     def dependency(
         credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
         x_client_cert_sha256: str | None = Header(default=None, alias="X-Client-Cert-SHA256"),
+        x_govmesh_user: str | None = Header(default=None, alias="X-GovMesh-User"),
+        x_govmesh_roles: str | None = Header(default=None, alias="X-GovMesh-Roles"),
+        x_govmesh_issued_at: str | None = Header(default=None, alias="X-GovMesh-Issued-At"),
+        x_govmesh_proxy_signature: str | None = Header(default=None, alias="X-GovMesh-Proxy-Signature"),
     ) -> Principal:
         token = credentials.credentials if credentials else None
-        return policy.authenticate(token, required_roles, client_fingerprint=x_client_cert_sha256)
+        return policy.authenticate(
+            token,
+            required_roles,
+            client_fingerprint=x_client_cert_sha256,
+            proxy_user=x_govmesh_user,
+            proxy_roles=x_govmesh_roles,
+            proxy_issued_at=x_govmesh_issued_at,
+            proxy_signature=x_govmesh_proxy_signature,
+        )
 
     return dependency
 

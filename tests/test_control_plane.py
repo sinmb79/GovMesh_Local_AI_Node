@@ -1,7 +1,9 @@
 from fastapi.testclient import TestClient
+import time
 
 from apps.control_plane import create_app
 from packages.govmesh_common import ApiAuthPolicy
+from packages.govmesh_identity import sign_proxy_identity
 
 
 AUTH_HEADERS = {"Authorization": "Bearer test-token"}
@@ -98,6 +100,32 @@ def test_control_plane_can_require_client_certificate_fingerprint(tmp_path) -> N
         "/nodes",
         headers={**AUTH_HEADERS, "X-Client-Cert-SHA256": "aa bb cc"},
     ).status_code == 200
+
+
+def test_control_plane_accepts_signed_sso_proxy_headers(tmp_path) -> None:
+    issued_at = str(int(time.time()))
+    signature = sign_proxy_identity(
+        secret="proxy-secret",
+        user_id="operator-1",
+        roles={"operator", "auditor"},
+        issued_at=int(issued_at),
+    )
+    app = create_app(
+        db_path=tmp_path / "control.sqlite3",
+        audit_path=tmp_path / "audit.jsonl",
+        auth_policy=ApiAuthPolicy({"fallback-token": {"operator"}}, trusted_proxy_secret="proxy-secret"),
+    )
+    client = TestClient(app)
+
+    headers = {
+        "X-GovMesh-User": "operator-1",
+        "X-GovMesh-Roles": "operator,auditor",
+        "X-GovMesh-Issued-At": issued_at,
+        "X-GovMesh-Proxy-Signature": signature,
+    }
+
+    assert client.get("/nodes", headers=headers).status_code == 200
+    assert client.get("/audit/verify", headers=headers).status_code == 200
 
 
 def test_control_plane_filters_and_retries_failed_tasks(tmp_path) -> None:

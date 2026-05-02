@@ -12,6 +12,12 @@ python -m pytest
 python scripts/govmesh_doctor.py
 ```
 
+로컬 토큰 생성:
+
+```powershell
+python scripts/generate_local_tokens.py --powershell
+```
+
 ## Run Benchmark
 
 ```powershell

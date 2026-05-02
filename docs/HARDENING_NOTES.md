@@ -55,16 +55,33 @@
 ### 8. 운영자 진단
 
 - `scripts/govmesh_doctor.py`를 추가해 필수 환경 변수와 로컬 포트 사용 가능 여부를 점검합니다.
+- `scripts/generate_local_tokens.py`로 로컬 토큰과 감사 서명키, SSO 프록시 secret을 생성할 수 있습니다.
+
+### 9. 외부 보안 엔진 연동
+
+- `ExternalScannerConfig`와 `run_external_scanner`를 추가했습니다.
+- 외부 AV/YARA/CDR 도구는 실행 파일 SHA-256과 보조 스크립트/룰 파일 SHA-256이 맞을 때만 실행됩니다.
+- 외부 도구는 JSON findings를 반환하는 계약으로 통일했습니다.
+
+### 10. CDR 무해화 산출물
+
+- 텍스트 계열 파일은 제어문자 제거와 정책 스캐너 마스킹을 거친 sanitized 파일로 재구성할 수 있습니다.
+- 지원하지 않는 파일 형식은 자동 승인하지 않고 `manual_review_required`로 남깁니다.
+
+### 11. SSO 프록시 서명
+
+- 기관 SSO는 프록시에서 종단하고, 앱은 `X-GovMesh-*` 헤더의 HMAC 서명을 검증하는 구조를 추가했습니다.
+- unsigned identity header는 신뢰하지 않습니다.
 
 ## 남은 개발 과정
 
 1. 정식 사용자/기관 계정 체계
-   - 현재는 로컬 API 토큰과 mTLS 프록시 지문 allowlist 기반입니다.
-   - 다음 단계는 기관망 SSO, 단말 인증서 생명주기, 사용자별 권한 정책으로 확장해야 합니다.
+   - 현재는 로컬 API 토큰, mTLS 프록시 지문 allowlist, 서명된 SSO 프록시 헤더 기반입니다.
+   - 다음 단계는 실제 기관 IdP와 단말 인증서 생명주기 관리입니다.
 
 2. 전문 파일 검사
-   - 현재 Quarantine Gateway는 경량 정적 검사와 signature rule 엔진입니다.
-   - 실제 제출급 환경에서는 AV/YARA/CDR 엔진 연동, SBOM/서명 검증, 모델 파일 포맷 검증이 필요합니다.
+   - 현재 Quarantine Gateway는 경량 정적 검사, signature rule 엔진, pinned external scanner 계약을 포함합니다.
+   - 실제 제출급 환경에서는 기관이 쓰는 AV/YARA/CDR 제품의 실제 실행파일과 룰셋을 등록해야 합니다.
 
 3. Presidio 수준 PII 인식기
    - 현재는 정규식 기반 스캐너에 confidence/hash/checksum/context metadata를 보강한 상태입니다.
@@ -79,5 +96,5 @@
    - 운영 단계에서는 WORM 저장소, 키 관리 절차, 외부 감사 보관소가 필요합니다.
 
 6. Windows 설치 UX
-   - 현재는 CLI, 서비스 스크립트, 운영자 doctor 스크립트 중심입니다.
-   - 비개발자 운영자를 위해 설치 마법사, 토큰 생성 UI, 장애 진단 화면을 추가해야 합니다.
+   - 현재는 CLI, 서비스 스크립트, 운영자 doctor, 토큰 생성 스크립트 중심입니다.
+   - 비개발자 운영자를 위해 설치 마법사 UI와 장애 진단 화면을 추가해야 합니다.

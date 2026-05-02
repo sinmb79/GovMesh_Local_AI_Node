@@ -113,3 +113,17 @@ def test_quarantine_gateway_blocks_zip_traversal(tmp_path) -> None:
     scanned = client.post(f"/imports/{uploaded['import_id']}/scan").json()
 
     assert "archive_path_traversal" in scanned["scan_findings"]
+
+
+def test_quarantine_gateway_sanitizes_text_imports(tmp_path) -> None:
+    app = create_app(storage_dir=tmp_path / "storage", audit_path=tmp_path / "audit.jsonl")
+    client = TestClient(app)
+
+    uploaded = client.post(
+        "/imports/upload",
+        json={"filename": "document.txt", "content_text": "resident number 900101-1234567"},
+    ).json()
+    sanitized = client.post(f"/imports/{uploaded['import_id']}/sanitize").json()
+
+    assert sanitized["cdr_report"]["status"] == "sanitized"
+    assert sanitized["cdr_report"]["sanitized_sha256"]

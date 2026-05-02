@@ -7,6 +7,7 @@ from packages.govmesh_common import (
     AuditChain,
     AuditEvent,
     BenchmarkRun,
+    CheckpointStore,
     FileRegistryEntry,
     Node,
     PolicyDecision,
@@ -155,3 +156,18 @@ def test_audit_chain_exports_and_verifies_checkpoint(tmp_path) -> None:
     chain.append(event_type="node.heartbeat", actor="test-suite", payload={"node": "one"})
 
     assert chain.verify_checkpoint(checkpoint) is False
+
+
+def test_checkpoint_store_appends_and_returns_latest(tmp_path) -> None:
+    chain = AuditChain(tmp_path / "audit.jsonl", signing_key="checkpoint-key")
+    store = CheckpointStore(tmp_path / "checkpoints.jsonl")
+    chain.append(event_type="node.registered", actor="test-suite", payload={"node": "one"})
+
+    first = chain.export_checkpoint(tmp_path / "first.json", label="first")
+    store.append(first)
+    chain.append(event_type="node.heartbeat", actor="test-suite", payload={"node": "one"})
+    second = chain.export_checkpoint(tmp_path / "second.json", label="second")
+    store.append(second)
+
+    assert len(store.list()) == 2
+    assert store.latest_for_source(str(tmp_path / "audit.jsonl"))["label"] == "second"

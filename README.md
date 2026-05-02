@@ -46,6 +46,7 @@ GovMesh는 이 문제를 “PC 여러 대를 거대한 모델로 묶자”가 �
 python -m pytest
 python -m packages.govmesh_benchmark run --sample samples/documents --out reports/benchmarks
 python -m apps.node_agent performance-doctor
+python scripts/generate_local_tokens.py --powershell
 python scripts/govmesh_doctor.py
 python -m apps.node_agent scan-folder --path samples/documents
 python -m apps.node_agent query --sample samples/documents --question "근거 문서 기준으로 요약해줘"

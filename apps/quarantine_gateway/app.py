@@ -14,7 +14,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
 
 from packages.govmesh_common import ApiAuthPolicy, AuditChain, Principal, require_roles, sha256_file
-from packages.govmesh_quarantine import inspect_file
+from packages.govmesh_quarantine import inspect_file, sanitize_file
 
 
 DEFAULT_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -37,6 +37,7 @@ class ImportRecord(BaseModel):
     status: str
     scan_findings: list[str] = []
     scan_report: dict[str, Any] | None = None
+    cdr_report: dict[str, Any] | None = None
     approved: bool = False
 
 
@@ -136,6 +137,20 @@ def create_app(
         records[import_id] = record
         registry[import_id] = record
         audit.append(event_type="import.approved", actor=principal.actor, target_id=import_id, payload={"sha256": record.sha256})
+        return record
+
+    @app.post("/imports/{import_id}/sanitize", response_model=ImportRecord)
+    def sanitize(import_id: str, principal: Principal = Depends(require_importer)) -> ImportRecord:
+        record = _get(records, import_id)
+        cdr = sanitize_file(record.path, storage / "sanitized")
+        record = record.model_copy(update={"cdr_report": cdr.to_dict()})
+        records[import_id] = record
+        audit.append(
+            event_type="import.sanitized",
+            actor=principal.actor,
+            target_id=import_id,
+            payload={"status": cdr.status, "sanitized_sha256": cdr.sanitized_sha256, "reason": cdr.reason},
+        )
         return record
 
     @app.post("/imports/{import_id}/reject", response_model=ImportRecord)

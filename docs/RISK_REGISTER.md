@@ -17,3 +17,6 @@
 | R-013 | 압축파일 기반 반입 우회 | 악성 파일 반입 | zip traversal/size/nested archive checks | quarantine zip tests |
 | R-014 | 민감 chunk의 RAG 근거 사용 | 개인정보가 답변 근거로 재노출 | sensitive chunk default exclusion | RAG exclusion tests |
 | R-015 | 승인 flag만으로 로컬 실행파일 실행 | 악성 wrapper/model 실행 | executable/model SHA-256 pinning | runtime integrity tests |
+| R-016 | SSO 프록시 헤더 위조 | 사용자/권한 상승 | HMAC-signed proxy identity headers | identity proxy tests |
+| R-017 | 외부 보안 스캐너 자체 변조 | 검사 우회 또는 임의 코드 실행 | executable/rule SHA-256 pinning | external scanner tests |
+| R-018 | 문서 무해화 없이 반입 승인 | 악성 active content 또는 PII 재노출 | CDR sanitize/manual_review_required | CDR tests |

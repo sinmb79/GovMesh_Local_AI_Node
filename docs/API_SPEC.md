@@ -16,6 +16,17 @@ mTLS를 프록시에서 종단하는 환경에서는 다음 헤더를 allowlist 
 X-Client-Cert-SHA256: <client-certificate-sha256>
 ```
 
+기관 SSO를 프록시에서 종단하는 환경에서는 다음 서명 헤더를 사용할 수 있습니다.
+
+```http
+X-GovMesh-User: <sso-user-id>
+X-GovMesh-Roles: operator,auditor
+X-GovMesh-Issued-At: <unix-seconds>
+X-GovMesh-Proxy-Signature: <hmac-sha256>
+```
+
+서명되지 않은 SSO 사용자/역할 헤더는 신뢰하지 않습니다.
+
 ## Control Plane
 
 | Method | Path | Purpose |
@@ -36,6 +47,7 @@ X-Client-Cert-SHA256: <client-certificate-sha256>
 | POST | `/imports/upload` | 반입 파일 업로드 |
 | GET | `/imports/{id}` | 반입 상태 조회 |
 | POST | `/imports/{id}/scan` | 해시와 위험 패턴 검사 |
+| POST | `/imports/{id}/sanitize` | 텍스트 계열 반입물 CDR/마스킹 산출물 생성 |
 | POST | `/imports/{id}/approve` | 승인 |
 | POST | `/imports/{id}/reject` | 반려 |
 | GET | `/imports/approved` | 승인된 반입물 목록 |

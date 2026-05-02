@@ -11,6 +11,7 @@ GovMesh는 폐쇄망과 로컬 우선 환경을 기본값으로 둡니다. 내�
 - 운영 서버 진입점은 `Authorization: Bearer <token>` 기반 API 토큰이 없으면 시작하지 않습니다.
 - 토큰 역할은 `agent`, `operator`, `auditor`, `importer`, `approver`로 나누며, 상태 변경 API는 역할 검사를 통과해야 합니다.
 - mTLS는 내부 reverse proxy 또는 gateway에서 종단하고, 앱은 `X-Client-Cert-SHA256` 지문 allowlist를 검증하는 방식으로 연동할 수 있습니다.
+- 기관 SSO도 프록시에서 종단하고, 앱은 HMAC 서명된 `X-GovMesh-*` identity header만 신뢰합니다.
 - 외부 LLM 호출은 MVP에서 금지합니다.
 - 외부 모델, 문서, 패치는 Quarantine Gateway를 통과해야 합니다.
 - 테스트는 외부 네트워크 없이 통과해야 합니다.
@@ -29,6 +30,8 @@ GovMesh는 폐쇄망과 로컬 우선 환경을 기본값으로 둡니다. 내�
 ```text
 External Fetch Zone
   -> AI Quarantine Gateway
+  -> static/signature/external scanner
+  -> optional CDR sanitize
   -> Approval Console
   -> Internal Registry
   -> GovMesh Distribution
