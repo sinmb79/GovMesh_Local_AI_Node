@@ -74,3 +74,19 @@ def run_external_scanner(config: ExternalScannerConfig, file_path: str | Path) -
         for item in payload.get("findings", [])
     )
     return ExternalScanReport(scanner=config.name, ok=not findings, findings=findings, raw=payload)
+
+
+def load_external_scanner_configs(path: str | Path) -> list[ExternalScannerConfig]:
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    items = payload.get("scanners", payload if isinstance(payload, list) else [])
+    return [
+        ExternalScannerConfig(
+            name=str(item["name"]),
+            executable_path=str(item["executable_path"]),
+            expected_executable_sha256=str(item["expected_executable_sha256"]),
+            args_template=tuple(str(arg) for arg in item.get("args_template", [])),
+            expected_auxiliary_hashes=dict(item.get("expected_auxiliary_hashes") or {}),
+            timeout_seconds=int(item.get("timeout_seconds", 30)),
+        )
+        for item in items
+    ]

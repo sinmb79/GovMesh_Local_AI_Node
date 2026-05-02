@@ -2,7 +2,14 @@ from pathlib import Path
 import sys
 
 from packages.govmesh_common import sha256_file
-from packages.govmesh_quarantine import ExternalScannerConfig, run_external_scanner, sanitize_file
+import json
+
+from packages.govmesh_quarantine import (
+    ExternalScannerConfig,
+    load_external_scanner_configs,
+    run_external_scanner,
+    sanitize_file,
+)
 
 
 def test_external_scanner_requires_pinned_executable_and_auxiliary(tmp_path) -> None:
@@ -75,3 +82,29 @@ def test_cdr_requires_manual_review_for_unsupported_files(tmp_path) -> None:
 
     assert report.status == "manual_review_required"
     assert report.reason == "unsupported_file_type"
+
+
+def test_external_scanner_config_loader(tmp_path) -> None:
+    config_path = tmp_path / "scanners.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "scanners": [
+                    {
+                        "name": "demo",
+                        "executable_path": "scanner.exe",
+                        "expected_executable_sha256": "a" * 64,
+                        "args_template": ["--json", "{file}"],
+                        "expected_auxiliary_hashes": {"rules.yar": "b" * 64},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    configs = load_external_scanner_configs(config_path)
+
+    assert configs[0].name == "demo"
+    assert configs[0].args_template == ("--json", "{file}")
+    assert configs[0].expected_auxiliary_hashes == {"rules.yar": "b" * 64}

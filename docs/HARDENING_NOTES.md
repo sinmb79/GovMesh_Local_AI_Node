@@ -73,6 +73,22 @@
 - 기관 SSO는 프록시에서 종단하고, 앱은 `X-GovMesh-*` 헤더의 HMAC 서명을 검증하는 구조를 추가했습니다.
 - unsigned identity header는 신뢰하지 않습니다.
 
+### 12. Human Review Queue
+
+- `packages/govmesh_review`에 사람 검토 큐를 추가했습니다.
+- Control Plane에 `/reviews`, `/reviews/{id}/decision` API를 추가했습니다.
+- 저장되는 값은 원문이 아니라 summary, evidence ID, content hash 중심입니다.
+
+### 13. Evidence Package 강화
+
+- 증빙 패키지에 `governance_summary.json`을 추가했습니다.
+- 필수 보안 문서와 필수 운영 모듈 존재 여부를 자동 요약합니다.
+
+### 14. 로컬 환경 부트스트랩
+
+- `scripts/setup_local_env.py`가 `.govmesh-local/.env.local`과 `.govmesh-local/env.ps1`을 생성합니다.
+- 생성물은 `.gitignore` 대상이므로 공개 레포에 비밀값이 올라가지 않습니다.
+
 ## 남은 개발 과정
 
 1. 정식 사용자/기관 계정 체계
@@ -98,3 +114,7 @@
 6. Windows 설치 UX
    - 현재는 CLI, 서비스 스크립트, 운영자 doctor, 토큰 생성 스크립트 중심입니다.
    - 비개발자 운영자를 위해 설치 마법사 UI와 장애 진단 화면을 추가해야 합니다.
+
+7. 실제 운영 검토 조직 연결
+   - 현재는 로컬 JSONL human review queue입니다.
+   - 다음 단계는 기관 결재/전자문서/티켓 시스템과 연동하는 것입니다.

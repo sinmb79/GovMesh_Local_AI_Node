@@ -20,3 +20,5 @@
 | R-016 | SSO 프록시 헤더 위조 | 사용자/권한 상승 | HMAC-signed proxy identity headers | identity proxy tests |
 | R-017 | 외부 보안 스캐너 자체 변조 | 검사 우회 또는 임의 코드 실행 | executable/rule SHA-256 pinning | external scanner tests |
 | R-018 | 문서 무해화 없이 반입 승인 | 악성 active content 또는 PII 재노출 | CDR sanitize/manual_review_required | CDR tests |
+| R-019 | LLM/반입물 사람 검토 누락 | 책임 소재 불명확 | sanitized human review queue | review queue tests |
+| R-020 | 제출 증빙 누락 | 심사/감사 대응 실패 | governance evidence summary | evidence package tests |

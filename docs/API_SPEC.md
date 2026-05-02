@@ -62,6 +62,14 @@ X-GovMesh-Proxy-Signature: <hmac-sha256>
 | POST | `/skills/{id}/reject` | 거부 |
 | POST | `/skills/{id}/deploy` | 배포 |
 
+## Review Queue
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/reviews` | 사람 검토 항목 생성 |
+| GET | `/reviews` | 검토 항목 목록 |
+| POST | `/reviews/{id}/decision` | 승인/반려/추가정보 요청 |
+
 ## Response Rules
 
 - 정책 차단 응답은 `block_reason`, `risk_level`, `user_message`를 포함해야 합니다.

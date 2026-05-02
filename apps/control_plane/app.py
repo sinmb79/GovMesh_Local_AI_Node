@@ -21,6 +21,7 @@ from packages.govmesh_common import (
     require_roles,
 )
 from packages.govmesh_common.schemas import utc_now
+from packages.govmesh_review import ReviewDecision, ReviewQueue
 
 
 class NodeRegisterRequest(BaseModel):
@@ -70,11 +71,13 @@ def create_app(
     *,
     db_path: str | Path = ".govmesh-local/control-plane.sqlite3",
     audit_path: str | Path = ".govmesh-local/control-plane-audit.jsonl",
+    review_path: str | Path = ".govmesh-local/reviews.jsonl",
     auth_policy: ApiAuthPolicy | None = None,
     audit_signing_key: str | None = None,
 ) -> FastAPI:
     repo = SQLiteRepository(db_path)
     audit = AuditChain(audit_path, signing_key=audit_signing_key)
+    reviews = ReviewQueue(review_path)
     skills = GovSkillRegistry()
     auth = auth_policy or ApiAuthPolicy.disabled()
     app = FastAPI(title="GovMesh Control Plane", version="0.2.0")
@@ -229,6 +232,44 @@ def create_app(
     @app.get("/benchmarks", response_model=list[BenchmarkRun])
     def list_benchmarks(_: Principal = Depends(require_operator)) -> list[BenchmarkRun]:
         return repo.list_benchmarks()
+
+    @app.post("/reviews")
+    def create_review(request: dict[str, Any], principal: Principal = Depends(require_operator)):
+        item = reviews.create(
+            target_type=request["target_type"],
+            target_id=request["target_id"],
+            reason=request["reason"],
+            summary=request.get("summary", ""),
+            risk_level=request.get("risk_level", "medium"),
+            content=request.get("content"),
+            evidence_ids=request.get("evidence_ids") or [],
+            created_by=principal.actor,
+        )
+        audit.append(event_type="review.created", actor=principal.actor, target_id=item.review_id, payload={"target_id": item.target_id})
+        return item
+
+    @app.get("/reviews")
+    def list_reviews(
+        status: str | None = Query(default=None),
+        _: Principal = Depends(require_operator),
+    ):
+        return reviews.list(status=status)
+
+    @app.post("/reviews/{review_id}/decision")
+    def decide_review(review_id: str, request: ReviewDecision, principal: Principal = Depends(require_operator)):
+        try:
+            item = reviews.decide(review_id, request)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Review not found") from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        audit.append(
+            event_type="review.decided",
+            actor=principal.actor,
+            target_id=review_id,
+            payload={"status": item.status, "target_id": item.target_id},
+        )
+        return item
 
     @app.post("/skills/drafts")
     def create_skill(request: SkillDraftRequest, _: Principal = Depends(require_operator)):

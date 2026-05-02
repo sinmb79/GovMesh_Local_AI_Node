@@ -171,3 +171,9 @@ def test_checkpoint_store_appends_and_returns_latest(tmp_path) -> None:
 
     assert len(store.list()) == 2
     assert store.latest_for_source(str(tmp_path / "audit.jsonl"))["label"] == "second"
+    assert store.verify() is True
+
+    lines = (tmp_path / "checkpoints.jsonl").read_text(encoding="utf-8").splitlines()
+    tampered = lines[0].replace('"label":"first"', '"label":"changed"')
+    (tmp_path / "checkpoints.jsonl").write_text(tampered + "\n" + "\n".join(lines[1:]) + "\n", encoding="utf-8")
+    assert store.verify() is False

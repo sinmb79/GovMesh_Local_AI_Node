@@ -18,6 +18,13 @@ python scripts/govmesh_doctor.py
 python scripts/generate_local_tokens.py --powershell
 ```
 
+로컬 환경 파일 생성:
+
+```powershell
+python scripts/setup_local_env.py
+. .\.govmesh-local\env.ps1
+```
+
 ## Run Benchmark
 
 ```powershell

@@ -42,6 +42,8 @@ def main(argv: list[str] | None = None) -> int:
         ],
     }
     (out / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    governance = _build_governance_summary(manifest)
+    (out / "governance_summary.json").write_text(json.dumps(governance, ensure_ascii=False, indent=2), encoding="utf-8")
     print(out)
     return 0
 
@@ -75,6 +77,31 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _build_governance_summary(manifest: list[dict]) -> dict:
+    manifest_paths = {entry["path"] for entry in manifest}
+    required_docs = [
+        "docs/SECURITY_MODEL.md",
+        "docs/RISK_REGISTER.md",
+        "docs/HARDENING_NOTES.md",
+        "docs/RELEASE_CHECKLIST.md",
+        "docs/RUNBOOK.md",
+    ]
+    required_modules = [
+        "packages/govmesh_review/queue.py",
+        "packages/govmesh_quarantine/external.py",
+        "packages/govmesh_quarantine/cdr.py",
+        "packages/govmesh_runtime/grounding.py",
+        "packages/govmesh_identity/proxy_signature.py",
+    ]
+    return {
+        "required_docs": {path: path in manifest_paths for path in required_docs},
+        "required_modules": {path: path in manifest_paths for path in required_modules},
+        "all_required_present": all(path in manifest_paths for path in required_docs + required_modules),
+        "review_workflow": "human_review_queue_present",
+        "audit_checkpoint": "hash_chained_checkpoint_store_present",
+    }
 
 
 if __name__ == "__main__":

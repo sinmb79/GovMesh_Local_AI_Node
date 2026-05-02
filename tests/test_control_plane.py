@@ -179,3 +179,34 @@ def test_skill_registry_requires_approval_before_deploy_and_execution(tmp_path) 
     assert client.post(f"/skills/{skill_id}/approve", json={"reviewer": "boss"}).json()["status"] == "approved"
     assert client.post(f"/skills/{skill_id}/deploy").json()["status"] == "deployed"
     assert client.post(f"/skills/{skill_id}/execute-check").json()["allowed"] is True
+
+
+def test_control_plane_review_queue_flow(tmp_path) -> None:
+    app = create_app(
+        db_path=tmp_path / "control.sqlite3",
+        audit_path=tmp_path / "audit.jsonl",
+        review_path=tmp_path / "reviews.jsonl",
+    )
+    client = TestClient(app)
+
+    created = client.post(
+        "/reviews",
+        json={
+            "target_type": "rag_answer",
+            "target_id": "answer-1",
+            "reason": "grounding_required",
+            "summary": "Needs review",
+            "content": "raw answer should not be stored",
+            "evidence_ids": ["doc#1"],
+        },
+    ).json()
+    review_id = created["review_id"]
+    decided = client.post(
+        f"/reviews/{review_id}/decision",
+        json={"decision": "approved", "reviewer": "operator", "reason": "ok"},
+    ).json()
+
+    assert created["content_hash"]
+    assert decided["status"] == "approved"
+    assert client.get("/reviews", params={"status": "open"}).json() == []
+    assert "raw answer should not be stored" not in (tmp_path / "reviews.jsonl").read_text(encoding="utf-8")
