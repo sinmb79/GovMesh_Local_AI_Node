@@ -17,7 +17,7 @@ def create_app(
     from apps.admin_ui.cli import build_status_snapshot
 
     provider = status_provider or build_status_snapshot
-    app = FastAPI(title="GovMesh Admin UI", version="0.2.0")
+    app = FastAPI(title="GovMesh Admin UI", version="0.3.0")
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:

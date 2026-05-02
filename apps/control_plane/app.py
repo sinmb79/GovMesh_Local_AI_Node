@@ -80,7 +80,7 @@ def create_app(
     reviews = ReviewQueue(review_path)
     skills = GovSkillRegistry()
     auth = auth_policy or ApiAuthPolicy.disabled()
-    app = FastAPI(title="GovMesh Control Plane", version="0.2.0")
+    app = FastAPI(title="GovMesh Control Plane", version="0.3.0")
     require_agent = require_roles(auth, "agent", "operator")
     require_operator = require_roles(auth, "operator")
     require_auditor = require_roles(auth, "auditor", "operator")

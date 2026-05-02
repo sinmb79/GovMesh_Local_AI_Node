@@ -25,6 +25,13 @@ python scripts/setup_local_env.py
 . .\.govmesh-local\env.ps1
 ```
 
+로컬 스택 시작/종료:
+
+```powershell
+.\scripts\start_local_stack.ps1
+.\scripts\stop_local_stack.ps1
+```
+
 ## Run Benchmark
 
 ```powershell

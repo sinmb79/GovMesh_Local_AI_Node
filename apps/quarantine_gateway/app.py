@@ -55,7 +55,7 @@ def create_app(
     auth = auth_policy or ApiAuthPolicy.disabled()
     records: dict[str, ImportRecord] = {}
     registry: dict[str, ImportRecord] = {}
-    app = FastAPI(title="GovMesh Quarantine Gateway", version="0.2.0")
+    app = FastAPI(title="GovMesh Quarantine Gateway", version="0.3.0")
     require_importer = require_roles(auth, "importer", "operator")
     require_approver = require_roles(auth, "approver", "operator")
     require_auditor = require_roles(auth, "auditor", "operator")

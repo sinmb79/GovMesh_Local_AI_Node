@@ -5,6 +5,7 @@
 - `python -m pytest`
 - `python scripts/release_gate.py`
 - `python scripts/build_evidence_package.py`
+- `python scripts/build_release_bundle.py`
 - `python -m packages.govmesh_benchmark run --sample samples/documents --out reports/benchmarks`
 - `python -m apps.node_agent performance-doctor`
 - `python -m apps.node_agent scan-folder --path samples/documents`
@@ -27,12 +28,14 @@ Windows portable bundle:
 
 ```powershell
 .\scripts\build_portable.ps1
+python scripts/build_release_bundle.py
 ```
 
 Output:
 
 ```text
 dist\govmesh-portable
+dist\govmesh-local-ai-node-v0.3.0.zip
 ```
 
 Smoke test:

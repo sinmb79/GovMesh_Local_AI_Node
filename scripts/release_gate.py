@@ -32,6 +32,7 @@ def main(argv: list[str] | None = None) -> int:
     checks = [
         ("required files", check_required_files),
         ("fake pii scope", check_fake_pii_scope),
+        ("public wording", check_public_wording),
         ("localhost defaults", check_localhost_defaults),
     ]
     failures: list[str] = []
@@ -56,6 +57,7 @@ def main(argv: list[str] | None = None) -> int:
 def check_required_files() -> tuple[bool, str]:
     required = [
         "README.md",
+        "README.en.md",
         "docs/DEVELOPMENT_STATUS.md",
         "docs/RUNBOOK.md",
         "docs/CORPUS_COLLECTION.md",
@@ -69,10 +71,19 @@ def check_required_files() -> tuple[bool, str]:
         "packages/govmesh_runtime/providers.py",
         "packages/govmesh_review/queue.py",
         "scripts/build_evidence_package.py",
+        "scripts/build_release_bundle.py",
         "scripts/govmesh_doctor.py",
         "scripts/generate_local_tokens.py",
         "scripts/setup_local_env.py",
+        "scripts/install.ps1",
+        "scripts/start_local_stack.ps1",
+        "scripts/stop_local_stack.ps1",
         "scripts/install_windows_service.ps1",
+        "docs/GETTING_STARTED_KO.md",
+        "docs/INSTALL_WINDOWS.md",
+        "docs/DISTRIBUTION.md",
+        "SECURITY.md",
+        "CONTRIBUTING.md",
     ]
     missing = [path for path in required if not (ROOT / path).exists()]
     return (not missing, "all present" if not missing else f"missing {missing}")
@@ -100,6 +111,35 @@ def check_localhost_defaults() -> tuple[bool, str]:
     ]
     missing = [str(path.relative_to(ROOT)) for path in files if "127.0.0.1" not in path.read_text(encoding="utf-8")]
     return (not missing, "localhost defaults present" if not missing else f"missing localhost in {missing}")
+
+
+def check_public_wording() -> tuple[bool, str]:
+    blocked_terms = [
+        "".join(chr(code) for code in (0xD574, 0xCEE4, 0xD1A4)),
+        "hack" + "athon",
+        "Co" + "dex",
+        "A" + "GENTS",
+        "".join(chr(code) for code in (0xAC1C, 0xBC1C, 0xAD6C, 0xD604, 0xC11C)),
+    ]
+    scan_roots = [
+        ROOT / "README.md",
+        ROOT / "README.en.md",
+        ROOT / "SECURITY.md",
+        ROOT / "CONTRIBUTING.md",
+        ROOT / "docs",
+    ]
+    offenders: list[str] = []
+    for root in scan_roots:
+        paths = root.rglob("*") if root.is_dir() else [root]
+        for path in paths:
+            if not path.is_file() or _skip_path(path):
+                continue
+            text = path.read_text(encoding="utf-8", errors="ignore").lower()
+            for term in blocked_terms:
+                if term.lower() in text:
+                    offenders.append(path.relative_to(ROOT).as_posix())
+                    break
+    return (not offenders, "public docs clean" if not offenders else ", ".join(sorted(set(offenders))))
 
 
 def _skip_path(path: Path) -> bool:

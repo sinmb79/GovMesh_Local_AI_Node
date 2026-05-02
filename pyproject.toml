@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "govmesh-local-ai-node"
-version = "0.2.0"
-description = "Local-first GovMesh AI node MVP scaffold"
+version = "0.3.0"
+description = "Local-first AI node for secure document review, RAG, quarantine, and audit workflows"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.110",
