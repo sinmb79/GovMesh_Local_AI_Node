@@ -11,7 +11,8 @@ from fastapi.responses import HTMLResponse
 def create_app(
     *,
     control_plane_url: str,
-    status_provider: Callable[[str], dict[str, Any]] | None = None,
+    api_token: str | None = None,
+    status_provider: Callable[..., dict[str, Any]] | None = None,
 ) -> FastAPI:
     from apps.admin_ui.cli import build_status_snapshot
 
@@ -24,7 +25,9 @@ def create_app(
 
     @app.get("/api/status")
     def status() -> dict[str, Any]:
-        return provider(control_plane_url)
+        if status_provider is not None:
+            return provider(control_plane_url)
+        return provider(control_plane_url, api_token=api_token)
 
     return app
 

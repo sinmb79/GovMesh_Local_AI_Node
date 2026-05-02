@@ -7,7 +7,8 @@ from pathlib import Path
 import subprocess
 from typing import Any
 
-from packages.govmesh_common import PolicyDecision
+from packages.govmesh_common import PolicyDecision, sha256_file
+from packages.govmesh_runtime.model_registry import ModelRecord
 
 
 class LLMProvider(ABC):
@@ -44,6 +45,10 @@ class LocalLlamaCppProvider(LLMProvider):
         model_path: str | Path,
         approved: bool = False,
         pre_args: list[str] | None = None,
+        allow_pre_args: bool = False,
+        expected_executable_sha256: str | None = None,
+        expected_model_sha256: str | None = None,
+        allow_unverified_runtime: bool = False,
         timeout_seconds: int = 60,
         max_tokens: int = 128,
     ) -> None:
@@ -51,16 +56,45 @@ class LocalLlamaCppProvider(LLMProvider):
         self.model_path = Path(model_path)
         self.approved = approved
         self.pre_args = pre_args or []
+        self.allow_pre_args = allow_pre_args
+        self.expected_executable_sha256 = expected_executable_sha256
+        self.expected_model_sha256 = expected_model_sha256
+        self.allow_unverified_runtime = allow_unverified_runtime
         self.timeout_seconds = timeout_seconds
         self.max_tokens = max_tokens
+
+    @classmethod
+    def from_model_record(
+        cls,
+        *,
+        executable_path: str | Path,
+        model_record: ModelRecord,
+        expected_executable_sha256: str,
+        **kwargs: Any,
+    ) -> "LocalLlamaCppProvider":
+        if not model_record.approved or model_record.license_review_status != "approved":
+            raise PermissionError("Model registry record is not approved")
+        if model_record.provider != "llama.cpp":
+            raise ValueError("Model registry record provider must be llama.cpp")
+        return cls(
+            executable_path=executable_path,
+            model_path=model_record.path,
+            approved=True,
+            expected_executable_sha256=expected_executable_sha256,
+            expected_model_sha256=model_record.sha256,
+            **kwargs,
+        )
 
     def generate(self, prompt: str, *, contexts: list[dict[str, Any]] | None = None) -> dict:
         if not self.approved:
             raise PermissionError("llama.cpp runtime must be explicitly approved before use")
+        if self.pre_args and not self.allow_pre_args:
+            raise PermissionError("llama.cpp pre_args require explicit allow_pre_args=True")
         if not self.executable_path.exists():
             raise FileNotFoundError(f"llama.cpp executable not found: {self.executable_path}")
         if not self.model_path.exists():
             raise FileNotFoundError(f"llama.cpp model not found: {self.model_path}")
+        self._verify_integrity()
 
         context_text = "\n".join(context.get("snippet", "") for context in contexts or [])
         full_prompt = f"{context_text}\n\n{prompt}".strip()
@@ -89,6 +123,14 @@ class LocalLlamaCppProvider(LLMProvider):
             "evidence_ids": [context.get("chunk_id") for context in contexts or [] if context.get("chunk_id")],
             "is_draft": True,
         }
+
+    def _verify_integrity(self) -> None:
+        if not self.expected_executable_sha256 and not self.expected_model_sha256 and not self.allow_unverified_runtime:
+            raise PermissionError("llama.cpp executable and model hashes must be pinned before use")
+        if self.expected_executable_sha256 and sha256_file(self.executable_path) != self.expected_executable_sha256:
+            raise PermissionError("llama.cpp executable hash mismatch")
+        if self.expected_model_sha256 and sha256_file(self.model_path) != self.expected_model_sha256:
+            raise PermissionError("llama.cpp model hash mismatch")
 
 
 class OllamaProvider(LLMProvider):

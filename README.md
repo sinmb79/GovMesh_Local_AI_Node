@@ -52,6 +52,13 @@ python -m apps.node_agent query --sample samples/documents --question "근거 �
 
 ## 서버 실행
 
+서버를 직접 실행할 때는 로컬 토큰을 먼저 지정합니다.
+
+```powershell
+$env:GOVMESH_API_TOKEN="replace-with-local-dev-token"
+$env:GOVMESH_AUDIT_SIGNING_KEY="replace-with-local-audit-key"
+```
+
 Control Plane:
 
 ```powershell
@@ -100,6 +107,7 @@ docs/
   RUNBOOK.md              실행 가이드
   DEVELOPMENT_STATUS.md   개발 상태
   SECURITY_MODEL.md       보안 모델
+  HARDENING_NOTES.md      보안 보완 사항과 남은 개발 과정
   RELEASE_CHECKLIST.md    릴리즈 검증
 ```
 
@@ -122,6 +130,7 @@ docs/
 
 - [실행 가이드](docs/RUNBOOK.md)
 - [보안 모델](docs/SECURITY_MODEL.md)
+- [보안 보완 노트](docs/HARDENING_NOTES.md)
 - [기관 corpus 절차](docs/CORPUS_COLLECTION.md)
 - [릴리즈 체크리스트](docs/RELEASE_CHECKLIST.md)
 

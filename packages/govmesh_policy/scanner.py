@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import Iterable
 
-from packages.govmesh_common import AuditChain, PolicyDecision
+from packages.govmesh_common import AuditChain, PolicyDecision, sha256_text
 
 
 @dataclass(frozen=True)
@@ -15,6 +15,7 @@ class PolicyPattern:
     pattern: re.Pattern[str]
     risk_level: str
     block_reason: str
+    confidence: float = 0.8
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,8 @@ class PolicyFinding:
     end: int
     risk_level: str
     block_reason: str
+    confidence: float
+    match_hash: str
 
     def to_dict(self) -> dict:
         return {
@@ -32,6 +35,8 @@ class PolicyFinding:
             "end": self.end,
             "risk_level": self.risk_level,
             "block_reason": self.block_reason,
+            "confidence": self.confidence,
+            "match_hash": self.match_hash,
         }
 
 
@@ -159,6 +164,8 @@ def _find(text: str) -> list[PolicyFinding]:
                     end=match.end(),
                     risk_level=policy_pattern.risk_level,
                     block_reason=policy_pattern.block_reason,
+                    confidence=policy_pattern.confidence,
+                    match_hash=sha256_text(match.group(0)),
                 )
             )
     return sorted(findings, key=lambda item: (item.start, item.end, item.kind))

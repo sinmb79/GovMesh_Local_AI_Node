@@ -49,7 +49,7 @@ def test_admin_status_snapshot(monkeypatch, tmp_path) -> None:
         def __exit__(self, exc_type, exc, tb):
             return False
 
-        def get(self, url):
+        def get(self, url, **kwargs):
             path = "/" + url.split("/", 3)[3]
             return FakeResponse(test_client.get(path))
 

@@ -63,6 +63,7 @@ class AuditEvent(GovMeshModel):
     created_at: datetime = Field(default_factory=utc_now)
     previous_hash: str | None = None
     event_hash: str | None = None
+    signature: str | None = None
 
 
 class FileRegistryEntry(GovMeshModel):

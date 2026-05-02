@@ -1,5 +1,15 @@
 # API Spec Draft
 
+## Auth
+
+운영 서버로 실행하는 Control Plane과 Quarantine Gateway는 기본적으로 다음 헤더를 요구합니다.
+
+```http
+Authorization: Bearer <govmesh-token>
+```
+
+역할은 `agent`, `operator`, `auditor`, `importer`, `approver`로 나뉩니다. `/health`는 로컬 상태 점검을 위해 공개로 둘 수 있지만, 노드/작업/감사/반입 상태 변경 API는 역할 검사를 통과해야 합니다.
+
 ## Control Plane
 
 | Method | Path | Purpose |

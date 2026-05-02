@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 import socket
 from pathlib import Path
@@ -24,14 +25,17 @@ def build_parser() -> argparse.ArgumentParser:
     register = subparsers.add_parser("register")
     register.add_argument("--control-plane", default=None)
     register.add_argument("--agent-version", default="0.2.0")
+    register.add_argument("--api-token", default=None)
 
     heartbeat = subparsers.add_parser("heartbeat")
     heartbeat.add_argument("--control-plane", required=True)
     heartbeat.add_argument("--node-id", required=True)
+    heartbeat.add_argument("--api-token", default=None)
 
     worker = subparsers.add_parser("run-worker")
     worker.add_argument("--control-plane", required=True)
     worker.add_argument("--node-id", required=True)
+    worker.add_argument("--api-token", default=None)
     worker.add_argument("--once", action="store_true")
     worker.add_argument("--interval", type=float, default=5.0)
     worker.add_argument("--max-iterations", type=int, default=None)
@@ -60,16 +64,24 @@ def main(argv: list[str] | None = None) -> int:
         _print_json(query_folder(Path(args.sample), args.question, top_k=args.top_k))
         return 0
     if args.command == "register":
-        _print_json(register(args.control_plane, agent_version=args.agent_version))
+        _print_json(register(args.control_plane, agent_version=args.agent_version, api_token=args.api_token))
         return 0
     if args.command == "heartbeat":
-        _print_json(heartbeat(args.control_plane, args.node_id))
+        _print_json(heartbeat(args.control_plane, args.node_id, api_token=args.api_token))
         return 0
     if args.command == "run-worker":
         if args.once:
-            _print_json(run_worker_once(args.control_plane, args.node_id))
+            _print_json(run_worker_once(args.control_plane, args.node_id, api_token=args.api_token))
         else:
-            _print_json(run_worker_loop(args.control_plane, args.node_id, interval=args.interval, max_iterations=args.max_iterations))
+            _print_json(
+                run_worker_loop(
+                    args.control_plane,
+                    args.node_id,
+                    interval=args.interval,
+                    max_iterations=args.max_iterations,
+                    api_token=args.api_token,
+                )
+            )
         return 0
     return 1
 
@@ -119,7 +131,7 @@ def query_folder(path: Path, question: str, *, top_k: int = 3) -> dict[str, Any]
     return {"answer": answer, "contexts": rag_result["contexts"]}
 
 
-def register(control_plane: str | None, *, agent_version: str) -> dict[str, Any]:
+def register(control_plane: str | None, *, agent_version: str, api_token: str | None = None) -> dict[str, Any]:
     profile = collect_pc_profile()
     payload = {
         "hostname": socket.gethostname(),
@@ -134,12 +146,12 @@ def register(control_plane: str | None, *, agent_version: str) -> dict[str, Any]
     if not control_plane:
         return {"offline": True, "node": payload}
     with httpx.Client(timeout=5) as client:
-        response = client.post(f"{control_plane.rstrip('/')}/nodes/register", json=payload)
+        response = client.post(f"{control_plane.rstrip('/')}/nodes/register", json=payload, headers=_auth_headers(api_token))
         response.raise_for_status()
         return response.json()
 
 
-def heartbeat(control_plane: str, node_id: str) -> dict[str, Any]:
+def heartbeat(control_plane: str, node_id: str, *, api_token: str | None = None) -> dict[str, Any]:
     profile = collect_pc_profile()
     payload = {
         "status": "online",
@@ -148,14 +160,19 @@ def heartbeat(control_plane: str, node_id: str) -> dict[str, Any]:
         "disk_free_mb": profile.disk_free_mb,
     }
     with httpx.Client(timeout=5) as client:
-        response = client.post(f"{control_plane.rstrip('/')}/nodes/{node_id}/heartbeat", json=payload)
+        response = client.post(
+            f"{control_plane.rstrip('/')}/nodes/{node_id}/heartbeat",
+            json=payload,
+            headers=_auth_headers(api_token),
+        )
         response.raise_for_status()
         return response.json()
 
 
-def run_worker_once(control_plane: str, node_id: str) -> dict[str, Any]:
+def run_worker_once(control_plane: str, node_id: str, *, api_token: str | None = None) -> dict[str, Any]:
+    headers = _auth_headers(api_token)
     with httpx.Client(timeout=5) as client:
-        response = client.get(f"{control_plane.rstrip('/')}/tasks/next", params={"node_id": node_id})
+        response = client.get(f"{control_plane.rstrip('/')}/tasks/next", params={"node_id": node_id}, headers=headers)
         response.raise_for_status()
         task = response.json()
         if task is None:
@@ -164,6 +181,7 @@ def run_worker_once(control_plane: str, node_id: str) -> dict[str, Any]:
         result_response = client.post(
             f"{control_plane.rstrip('/')}/tasks/{task['task_id']}/result",
             json={"status": result["status"], "result": result.get("result"), "error": result.get("error")},
+            headers=headers,
         )
         result_response.raise_for_status()
         return result_response.json()
@@ -175,12 +193,13 @@ def run_worker_loop(
     *,
     interval: float = 5.0,
     max_iterations: int | None = None,
+    api_token: str | None = None,
 ) -> dict[str, Any]:
     iterations = 0
     processed = 0
     last_result: dict[str, Any] | None = None
     while max_iterations is None or iterations < max_iterations:
-        last_result = run_worker_once(control_plane, node_id)
+        last_result = run_worker_once(control_plane, node_id, api_token=api_token)
         iterations += 1
         if last_result.get("status") != "idle":
             processed += 1
@@ -207,3 +226,10 @@ def _execute_task(task: dict[str, Any]) -> dict[str, Any]:
 
 def _print_json(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+def _auth_headers(api_token: str | None = None) -> dict[str, str]:
+    token = api_token or os.environ.get("GOVMESH_AGENT_TOKEN") or os.environ.get("GOVMESH_API_TOKEN")
+    if not token:
+        return {}
+    return {"Authorization": f"Bearer {token}"}

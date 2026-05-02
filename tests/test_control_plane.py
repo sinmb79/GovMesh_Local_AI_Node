@@ -1,6 +1,10 @@
 from fastapi.testclient import TestClient
 
 from apps.control_plane import create_app
+from packages.govmesh_common import ApiAuthPolicy
+
+
+AUTH_HEADERS = {"Authorization": "Bearer test-token"}
 
 
 def test_control_plane_node_task_audit_and_benchmark_flow(tmp_path) -> None:
@@ -45,6 +49,37 @@ def test_control_plane_node_task_audit_and_benchmark_flow(tmp_path) -> None:
     assert client.get("/audit/verify").json() == {"valid": True}
     assert len(client.get("/audit/events").json()) >= 5
     assert client.get("/health").json()["schema_version"] == 1
+
+
+def test_control_plane_requires_roles_when_auth_enabled(tmp_path) -> None:
+    app = create_app(
+        db_path=tmp_path / "control.sqlite3",
+        audit_path=tmp_path / "audit.jsonl",
+        auth_policy=ApiAuthPolicy.single_token("test-token", roles={"operator", "auditor"}),
+        audit_signing_key="test-signing-key",
+    )
+    client = TestClient(app)
+
+    unauthenticated = client.get("/nodes")
+    assert unauthenticated.status_code == 401
+
+    node_response = client.post(
+        "/nodes/register",
+        headers=AUTH_HEADERS,
+        json={
+            "hostname": "sample-pc",
+            "os": "Windows 11",
+            "agent_version": "0.2.0",
+            "cpu_count": 8,
+            "memory_total_mb": 16384,
+            "disk_free_mb": 100000,
+        },
+    )
+    assert node_response.status_code == 200
+    assert client.get("/nodes", headers=AUTH_HEADERS).status_code == 200
+    audit_events = client.get("/audit/events", headers=AUTH_HEADERS).json()
+    assert audit_events[0]["signature"]
+    assert client.get("/audit/verify", headers=AUTH_HEADERS).json() == {"valid": True}
 
 
 def test_control_plane_filters_and_retries_failed_tasks(tmp_path) -> None:

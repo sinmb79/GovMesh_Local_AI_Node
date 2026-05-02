@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hmac
 from pathlib import Path
 from typing import Any
 
@@ -16,8 +17,9 @@ GENESIS_HASH = "0" * 64
 class AuditChain:
     """Store audit events as a tamper-evident JSONL hash chain."""
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, *, signing_key: str | bytes | None = None) -> None:
         self.path = Path(path)
+        self._signing_key = signing_key.encode("utf-8") if isinstance(signing_key, str) else signing_key
 
     def append(
         self,
@@ -45,7 +47,7 @@ class AuditChain:
             update={"previous_hash": previous_hash, "event_hash": None}
         )
         event_hash = self._hash_event(unsigned)
-        stored = unsigned.model_copy(update={"event_hash": event_hash})
+        stored = unsigned.model_copy(update={"event_hash": event_hash, "signature": self._signature(event_hash)})
 
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8", newline="\n") as handle:
@@ -89,9 +91,22 @@ class AuditChain:
             unsigned = event.model_copy(update={"event_hash": None})
             if self._hash_event(unsigned) != event.event_hash:
                 return False
+            if self._signing_key is not None and event.signature != self._signature(event.event_hash):
+                return False
             expected_previous_hash = event.event_hash
 
         return True
+
+    def head(self) -> dict[str, Any]:
+        """Return the current audit head without exposing event payloads."""
+
+        events = self.list()
+        head_hash = events[-1].event_hash if events else GENESIS_HASH
+        return {
+            "event_count": len(events),
+            "head_hash": head_hash,
+            "signature": self._signature(head_hash),
+        }
 
     def _last_hash(self) -> str:
         events = self.list()
@@ -104,4 +119,9 @@ class AuditChain:
 
     @staticmethod
     def _hash_event(event: AuditEvent) -> str:
-        return sha256_text(canonical_json(event.model_dump(mode="json", exclude={"event_hash"})))
+        return sha256_text(canonical_json(event.model_dump(mode="json", exclude={"event_hash", "signature"})))
+
+    def _signature(self, event_hash: str | None) -> str | None:
+        if self._signing_key is None or event_hash is None:
+            return None
+        return hmac.digest(self._signing_key, event_hash.encode("ascii"), "sha256").hex()

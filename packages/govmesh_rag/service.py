@@ -50,11 +50,15 @@ class LocalRAGService:
             source_path=str(file_path),
         )
 
-    def query(self, query: str, *, top_k: int = 5) -> dict:
+    def query(self, query: str, *, top_k: int = 5, include_sensitive: bool = False) -> dict:
         query_vector = self.embedding_provider.embed(query)
-        results = self.vector_store.search(query_vector, top_k=top_k)
+        results = self.vector_store.search(query_vector, top_k=top_k + 10)
+        if not include_sensitive:
+            results = [result for result in results if not result.sensitive]
+        results = results[:top_k]
         return {
             "query": query,
+            "sensitive_contexts_excluded": not include_sensitive,
             "contexts": [self._to_context(result) for result in results],
         }
 

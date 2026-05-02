@@ -46,6 +46,15 @@ def test_policy_allows_clean_text() -> None:
     assert decision.findings == []
 
 
+def test_policy_findings_expose_hash_not_raw_match() -> None:
+    decision = scan_text("contact test@example.go.kr")
+
+    finding = decision.findings[0]
+    assert finding["kind"] == "email"
+    assert finding["match_hash"]
+    assert "test@example.go.kr" not in str(finding)
+
+
 def test_policy_alert_audit_does_not_store_raw_pii(tmp_path) -> None:
     audit = AuditChain(tmp_path / "audit.jsonl")
     decision = scan_text("주민번호 900101-1234567")

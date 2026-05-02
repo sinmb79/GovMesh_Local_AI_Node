@@ -12,3 +12,8 @@
 | R-008 | 자동 skill 실행 위험 | 감사/책임 불명확 | draft-review-approve-deploy workflow | unapproved skill denial |
 | R-009 | 모델 라이선스 충돌 | 배포/조달 문제 | model registry license 필수 | missing license reject |
 | R-010 | 사용자 불신 | 도입 저항 | 수집 항목 표시, pause/resume, CPU 제한 | notice and pause tests |
+| R-011 | API 토큰 누락 또는 과권한 토큰 | 내부 API 오남용 | 역할별 bearer token, 운영 진입점 토큰 필수 | auth-enabled API tests |
+| R-012 | 감사로그 사후 조작 | 사고 조사 신뢰도 하락 | hash chain + optional HMAC signature | signed audit tests |
+| R-013 | 압축파일 기반 반입 우회 | 악성 파일 반입 | zip traversal/size/nested archive checks | quarantine zip tests |
+| R-014 | 민감 chunk의 RAG 근거 사용 | 개인정보가 답변 근거로 재노출 | sensitive chunk default exclusion | RAG exclusion tests |
+| R-015 | 승인 flag만으로 로컬 실행파일 실행 | 악성 wrapper/model 실행 | executable/model SHA-256 pinning | runtime integrity tests |

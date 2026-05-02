@@ -128,3 +128,14 @@ def test_audit_chain_verify_fails_after_previous_hash_tamper(tmp_path) -> None:
     )
 
     assert chain.verify() is False
+
+
+def test_signed_audit_chain_fails_with_wrong_key(tmp_path) -> None:
+    path = tmp_path / "audit.jsonl"
+    chain = AuditChain(path, signing_key="correct-key")
+    event = chain.append(event_type="node.registered", actor="test-suite", payload={"node": "one"})
+
+    assert event.signature is not None
+    assert chain.head()["signature"] is not None
+    assert chain.verify() is True
+    assert AuditChain(path, signing_key="wrong-key").verify() is False

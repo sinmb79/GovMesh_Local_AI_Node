@@ -5,11 +5,21 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from apps.control_plane.repository import SQLiteRepository
-from packages.govmesh_common import AuditChain, AuditEvent, BenchmarkRun, GovSkillRegistry, Node, Task
+from packages.govmesh_common import (
+    ApiAuthPolicy,
+    AuditChain,
+    AuditEvent,
+    BenchmarkRun,
+    GovSkillRegistry,
+    Node,
+    Principal,
+    Task,
+    require_roles,
+)
 from packages.govmesh_common.schemas import utc_now
 
 
@@ -60,25 +70,31 @@ def create_app(
     *,
     db_path: str | Path = ".govmesh-local/control-plane.sqlite3",
     audit_path: str | Path = ".govmesh-local/control-plane-audit.jsonl",
+    auth_policy: ApiAuthPolicy | None = None,
+    audit_signing_key: str | None = None,
 ) -> FastAPI:
     repo = SQLiteRepository(db_path)
-    audit = AuditChain(audit_path)
+    audit = AuditChain(audit_path, signing_key=audit_signing_key)
     skills = GovSkillRegistry()
+    auth = auth_policy or ApiAuthPolicy.disabled()
     app = FastAPI(title="GovMesh Control Plane", version="0.2.0")
+    require_agent = require_roles(auth, "agent", "operator")
+    require_operator = require_roles(auth, "operator")
+    require_auditor = require_roles(auth, "auditor", "operator")
 
     @app.post("/nodes/register", response_model=Node)
-    def register_node(request: NodeRegisterRequest) -> Node:
+    def register_node(request: NodeRegisterRequest, principal: Principal = Depends(require_agent)) -> Node:
         node = repo.save_node(Node(**request.model_dump()))
         audit.append(
             event_type="node.registered",
-            actor="control-plane",
+            actor=principal.actor,
             target_id=node.node_id,
             payload={"hostname": node.hostname},
         )
         return node
 
     @app.post("/nodes/{node_id}/heartbeat", response_model=Node)
-    def heartbeat(node_id: str, request: HeartbeatRequest) -> Node:
+    def heartbeat(node_id: str, request: HeartbeatRequest, principal: Principal = Depends(require_agent)) -> Node:
         try:
             node = repo.get_node(node_id)
         except KeyError as exc:
@@ -91,7 +107,7 @@ def create_app(
         node = repo.save_node(node.model_copy(update=update))
         audit.append(
             event_type="node.heartbeat",
-            actor="control-plane",
+            actor=principal.actor,
             target_id=node.node_id,
             payload={"status": node.status},
         )
@@ -106,15 +122,16 @@ def create_app(
         status: str | None = Query(default=None),
         limit: int = Query(default=100, ge=1, le=500),
         offset: int = Query(default=0, ge=0),
+        _: Principal = Depends(require_operator),
     ) -> list[Node]:
         return repo.list_nodes(status=status, limit=limit, offset=offset)
 
     @app.post("/tasks", response_model=Task)
-    def create_task(request: TaskCreateRequest) -> Task:
+    def create_task(request: TaskCreateRequest, principal: Principal = Depends(require_operator)) -> Task:
         task = repo.save_task(Task(**request.model_dump()))
         audit.append(
             event_type="task.created",
-            actor="control-plane",
+            actor=principal.actor,
             target_id=task.task_id,
             payload={"task_type": task.task_type},
         )
@@ -125,11 +142,15 @@ def create_app(
         status: str | None = Query(default=None),
         limit: int = Query(default=100, ge=1, le=500),
         offset: int = Query(default=0, ge=0),
+        _: Principal = Depends(require_operator),
     ) -> list[Task]:
         return repo.list_tasks(status=status, limit=limit, offset=offset)
 
     @app.get("/tasks/next", response_model=Task | None)
-    def next_task(node_id: str | None = Query(default=None)) -> Task | None:
+    def next_task(
+        node_id: str | None = Query(default=None),
+        principal: Principal = Depends(require_agent),
+    ) -> Task | None:
         task = repo.next_task()
         if task is None:
             return None
@@ -139,14 +160,14 @@ def create_app(
         task = repo.save_task(task.model_copy(update=update))
         audit.append(
             event_type="task.assigned",
-            actor="control-plane",
+            actor=principal.actor,
             target_id=task.task_id,
             payload={"node_id": node_id},
         )
         return task
 
     @app.post("/tasks/{task_id}/result", response_model=Task)
-    def task_result(task_id: str, request: TaskResultRequest) -> Task:
+    def task_result(task_id: str, request: TaskResultRequest, principal: Principal = Depends(require_agent)) -> Task:
         try:
             task = repo.get_task(task_id)
         except KeyError as exc:
@@ -168,47 +189,55 @@ def create_app(
             event_type = "task.result"
         audit.append(
             event_type=event_type,
-            actor="control-plane",
+            actor=principal.actor,
             target_id=task.task_id,
             payload={"status": task.status, "retry_count": task.retry_count},
         )
         return task
 
     @app.post("/audit/events", response_model=AuditEvent)
-    def append_audit(event: AuditEvent) -> AuditEvent:
-        return audit.append(event)
+    def append_audit(event: AuditEvent, principal: Principal = Depends(require_operator)) -> AuditEvent:
+        sanitized = event.model_copy(
+            update={
+                "actor": principal.actor,
+                "previous_hash": None,
+                "event_hash": None,
+                "signature": None,
+            }
+        )
+        return audit.append(sanitized)
 
     @app.get("/audit/events", response_model=list[AuditEvent])
-    def list_audit() -> list[AuditEvent]:
+    def list_audit(_: Principal = Depends(require_auditor)) -> list[AuditEvent]:
         return audit.list()
 
     @app.get("/audit/verify")
-    def verify_audit() -> dict[str, bool]:
+    def verify_audit(_: Principal = Depends(require_auditor)) -> dict[str, bool]:
         return {"valid": audit.verify()}
 
     @app.post("/benchmarks", response_model=BenchmarkRun)
-    def record_benchmark(run: BenchmarkRun) -> BenchmarkRun:
+    def record_benchmark(run: BenchmarkRun, principal: Principal = Depends(require_operator)) -> BenchmarkRun:
         saved = repo.save_benchmark(run)
         audit.append(
             event_type="benchmark.recorded",
-            actor="control-plane",
+            actor=principal.actor,
             target_id=saved.run_id,
             payload={"benchmark_type": saved.benchmark_type, "status": saved.status},
         )
         return saved
 
     @app.get("/benchmarks", response_model=list[BenchmarkRun])
-    def list_benchmarks() -> list[BenchmarkRun]:
+    def list_benchmarks(_: Principal = Depends(require_operator)) -> list[BenchmarkRun]:
         return repo.list_benchmarks()
 
     @app.post("/skills/drafts")
-    def create_skill(request: SkillDraftRequest):
+    def create_skill(request: SkillDraftRequest, _: Principal = Depends(require_operator)):
         skill = skills.create_draft(**request.model_dump())
         audit.append(event_type="skill.draft.created", actor=request.created_by, target_id=skill.skill_id)
         return skill
 
     @app.post("/skills/{skill_id}/review")
-    def request_skill_review(skill_id: str):
+    def request_skill_review(skill_id: str, _: Principal = Depends(require_operator)):
         try:
             skill = skills.request_review(skill_id)
         except KeyError as exc:
@@ -217,7 +246,7 @@ def create_app(
         return skill
 
     @app.post("/skills/{skill_id}/approve")
-    def approve_skill(skill_id: str, request: ReviewRequest):
+    def approve_skill(skill_id: str, request: ReviewRequest, _: Principal = Depends(require_operator)):
         try:
             skill = skills.approve(skill_id, reviewer=request.reviewer, reason=request.reason)
         except KeyError as exc:
@@ -226,7 +255,7 @@ def create_app(
         return skill
 
     @app.post("/skills/{skill_id}/reject")
-    def reject_skill(skill_id: str, request: ReviewRequest):
+    def reject_skill(skill_id: str, request: ReviewRequest, _: Principal = Depends(require_operator)):
         try:
             skill = skills.reject(skill_id, reviewer=request.reviewer, reason=request.reason)
         except KeyError as exc:
@@ -235,7 +264,7 @@ def create_app(
         return skill
 
     @app.post("/skills/{skill_id}/deploy")
-    def deploy_skill(skill_id: str):
+    def deploy_skill(skill_id: str, _: Principal = Depends(require_operator)):
         try:
             skill = skills.deploy(skill_id)
         except KeyError as exc:
@@ -246,7 +275,7 @@ def create_app(
         return skill
 
     @app.post("/skills/{skill_id}/execute-check")
-    def execute_check(skill_id: str):
+    def execute_check(skill_id: str, _: Principal = Depends(require_operator)):
         try:
             skill = skills.ensure_executable(skill_id)
         except KeyError as exc:
@@ -256,7 +285,7 @@ def create_app(
         return {"allowed": True, "skill_id": skill.skill_id}
 
     @app.get("/skills")
-    def list_skills():
+    def list_skills(_: Principal = Depends(require_operator)):
         return skills.list()
 
     return app
