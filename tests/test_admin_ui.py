@@ -2,6 +2,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 from apps.admin_ui.cli import build_status_snapshot
+from apps.admin_ui.app import create_app as create_admin_app
 from apps.control_plane import create_app
 
 
@@ -61,3 +62,9 @@ def test_admin_status_snapshot(monkeypatch, tmp_path) -> None:
     assert snapshot["node_count"] == 1
     assert snapshot["task_count"] == 1
     assert snapshot["audit"]["valid"] is True
+
+
+def test_admin_ui_health_endpoint() -> None:
+    client = TestClient(create_admin_app(control_plane_url="http://control-plane"))
+
+    assert client.get("/health").json() == {"ok": True, "service": "admin-ui"}

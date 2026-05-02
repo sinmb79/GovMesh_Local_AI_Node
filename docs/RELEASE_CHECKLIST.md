@@ -35,7 +35,7 @@ Output:
 
 ```text
 dist\govmesh-portable
-dist\govmesh-local-ai-node-v0.3.0.zip
+dist\govmesh-local-ai-node-v0.3.1.zip
 ```
 
 Smoke test:

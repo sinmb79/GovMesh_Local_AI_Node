@@ -24,7 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     register = subparsers.add_parser("register")
     register.add_argument("--control-plane", default=None)
-    register.add_argument("--agent-version", default="0.3.0")
+    register.add_argument("--agent-version", default="0.3.1")
     register.add_argument("--api-token", default=None)
 
     heartbeat = subparsers.add_parser("heartbeat")

@@ -14,7 +14,7 @@ def test_release_bundle_contains_public_docs_and_checksums(tmp_path) -> None:
     assert zip_path.exists()
     assert checksums_path.exists()
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert manifest["version"] == "0.3.0"
+    assert manifest["version"] == "0.3.1"
     assert manifest["zip_sha256"] == result["zip_sha256"]
 
     with zipfile.ZipFile(zip_path) as archive:

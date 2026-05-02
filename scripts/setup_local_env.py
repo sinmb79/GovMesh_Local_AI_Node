@@ -5,7 +5,10 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from scripts.generate_local_tokens import generate_tokens
+try:
+    from scripts.generate_local_tokens import generate_tokens
+except ModuleNotFoundError:  # pragma: no cover - exercised by direct script execution
+    from generate_local_tokens import generate_tokens
 
 
 def write_local_env(output_dir: str | Path = ".govmesh-local") -> dict[str, str]:

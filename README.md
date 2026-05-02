@@ -110,7 +110,7 @@ python scripts/build_release_bundle.py
 출력:
 
 ```text
-dist/govmesh-local-ai-node-v0.3.0.zip
+dist/govmesh-local-ai-node-v0.3.1.zip
 dist/SHA256SUMS.txt
 dist/release_manifest.json
 ```

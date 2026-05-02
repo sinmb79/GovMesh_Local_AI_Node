@@ -1,4 +1,4 @@
-# GovMesh Local AI Node v0.3.0
+# GovMesh Local AI Node v0.3.1
 
 ## 핵심 변경
 
@@ -8,6 +8,7 @@
 - SSO proxy signature, external scanner adapter, CDR sanitize 기반 추가
 - 감사 checkpoint store와 grounding 검증 강화
 - 한국어 시작 문서와 배포 문서 정리
+- Windows 설치 스크립트의 직접 실행 import 경로와 실패 감지 보강
 
 ## 검증
 

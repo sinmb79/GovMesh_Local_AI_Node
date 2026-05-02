@@ -15,6 +15,8 @@ def test_quarantine_gateway_approves_only_scanned_clean_imports(tmp_path) -> Non
     app = create_app(storage_dir=tmp_path / "storage", audit_path=tmp_path / "audit.jsonl")
     client = TestClient(app)
 
+    assert client.get("/health").json() == {"ok": True, "service": "quarantine-gateway", "imports": 0}
+
     uploaded = client.post(
         "/imports/upload",
         json={"filename": "model-card.md", "content_text": "clean model card"},

@@ -13,7 +13,7 @@ python scripts/build_release_bundle.py
 생성물:
 
 ```text
-dist/govmesh-local-ai-node-v0.3.0.zip
+dist/govmesh-local-ai-node-v0.3.1.zip
 dist/SHA256SUMS.txt
 dist/release_manifest.json
 ```
@@ -28,7 +28,7 @@ python scripts/build_evidence_package.py
 
 ## GitHub Release 권장 첨부 파일
 
-- `govmesh-local-ai-node-v0.3.0.zip`
+- `govmesh-local-ai-node-v0.3.1.zip`
 - `SHA256SUMS.txt`
 - `release_manifest.json`
 

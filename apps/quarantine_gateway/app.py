@@ -55,10 +55,14 @@ def create_app(
     auth = auth_policy or ApiAuthPolicy.disabled()
     records: dict[str, ImportRecord] = {}
     registry: dict[str, ImportRecord] = {}
-    app = FastAPI(title="GovMesh Quarantine Gateway", version="0.3.0")
+    app = FastAPI(title="GovMesh Quarantine Gateway", version="0.3.1")
     require_importer = require_roles(auth, "importer", "operator")
     require_approver = require_roles(auth, "approver", "operator")
     require_auditor = require_roles(auth, "auditor", "operator")
+
+    @app.get("/health")
+    def health() -> dict[str, Any]:
+        return {"ok": True, "service": "quarantine-gateway", "imports": len(records)}
 
     @app.post("/imports/upload", response_model=ImportRecord)
     def upload(request: ImportUploadRequest, principal: Principal = Depends(require_importer)) -> ImportRecord:

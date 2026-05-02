@@ -17,11 +17,15 @@ def create_app(
     from apps.admin_ui.cli import build_status_snapshot
 
     provider = status_provider or build_status_snapshot
-    app = FastAPI(title="GovMesh Admin UI", version="0.3.0")
+    app = FastAPI(title="GovMesh Admin UI", version="0.3.1")
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
         return _html()
+
+    @app.get("/health")
+    def health() -> dict[str, Any]:
+        return {"ok": True, "service": "admin-ui"}
 
     @app.get("/api/status")
     def status() -> dict[str, Any]:
