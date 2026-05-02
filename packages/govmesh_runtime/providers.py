@@ -8,6 +8,7 @@ import subprocess
 from typing import Any
 
 from packages.govmesh_common import PolicyDecision, sha256_file
+from packages.govmesh_runtime.grounding import verify_grounding
 from packages.govmesh_runtime.model_registry import ModelRecord
 
 
@@ -157,4 +158,6 @@ def generate_with_policy(
         }
     result = provider.generate(decision.masked_text or prompt, contexts=contexts)
     result["blocked"] = False
+    result["grounding"] = verify_grounding(result, contexts or [])
+    result["needs_review"] = result["grounding"]["requires_review"]
     return result

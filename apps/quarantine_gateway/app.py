@@ -6,22 +6,18 @@ import base64
 import binascii
 import mimetypes
 from pathlib import Path
-from pathlib import PurePosixPath, PureWindowsPath
 import zipfile
+from typing import Any
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
 
 from packages.govmesh_common import ApiAuthPolicy, AuditChain, Principal, require_roles, sha256_file
+from packages.govmesh_quarantine import inspect_file
 
 
-RISKY_EXTENSIONS = {".exe", ".bat", ".cmd", ".ps1", ".dll", ".scr", ".vbs"}
 DEFAULT_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
-MAX_ARCHIVE_ENTRIES = 200
-MAX_ARCHIVE_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
-MAX_TEXT_SCAN_BYTES = 1024 * 1024
-RISKY_STRINGS = ("Invoke-Expression", "powershell -enc", "ignore previous instructions", "이전 지시를 무시")
 
 
 class ImportUploadRequest(BaseModel):
@@ -40,6 +36,7 @@ class ImportRecord(BaseModel):
     media_type: str
     status: str
     scan_findings: list[str] = []
+    scan_report: dict[str, Any] | None = None
     approved: bool = False
 
 
@@ -110,15 +107,21 @@ def create_app(
     @app.post("/imports/{import_id}/scan", response_model=ImportRecord)
     def scan(import_id: str, principal: Principal = Depends(require_importer)) -> ImportRecord:
         record = _get(records, import_id)
-        findings = _scan_file(Path(record.path), record.filename)
+        report = inspect_file(Path(record.path), record.filename)
+        findings = report.finding_kinds()
         status = "blocked" if findings else "scanned"
-        record = record.model_copy(update={"scan_findings": findings, "status": status})
+        record = record.model_copy(update={"scan_findings": findings, "scan_report": report.to_dict(), "status": status})
         records[import_id] = record
         audit.append(
             event_type="import.scanned",
             actor=principal.actor,
             target_id=import_id,
-            payload={"finding_count": len(findings), "findings": findings},
+            payload={
+                "finding_count": len(findings),
+                "findings": findings,
+                "recommended_action": report.recommended_action,
+                "scanner_count": len(report.scanners),
+            },
         )
         return record
 
@@ -155,47 +158,6 @@ def _get(records: dict[str, ImportRecord], import_id: str) -> ImportRecord:
         return records[import_id]
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Import not found") from exc
-
-
-def _scan_file(path: Path, filename: str) -> list[str]:
-    findings: list[str] = []
-    if Path(filename).suffix.lower() in RISKY_EXTENSIONS:
-        findings.append("risky_extension")
-    if zipfile.is_zipfile(path):
-        with zipfile.ZipFile(path) as archive:
-            infos = archive.infolist()
-            if len(infos) > MAX_ARCHIVE_ENTRIES:
-                findings.append("archive_too_many_entries")
-            total_uncompressed = 0
-            for info in infos:
-                name = info.filename
-                total_uncompressed += max(0, info.file_size)
-                if _is_unsafe_archive_name(name):
-                    findings.append("archive_path_traversal")
-                    break
-                if Path(name).suffix.lower() in RISKY_EXTENSIONS:
-                    findings.append("risky_archive_entry")
-                    break
-                if Path(name).suffix.lower() in {".zip", ".7z", ".rar"}:
-                    findings.append("nested_archive")
-                    break
-                if info.compress_size and info.file_size / max(1, info.compress_size) > 100:
-                    findings.append("archive_high_compression_ratio")
-                    break
-            if total_uncompressed > MAX_ARCHIVE_UNCOMPRESSED_BYTES:
-                findings.append("archive_uncompressed_size_limit")
-    text = path.read_bytes()[:MAX_TEXT_SCAN_BYTES].decode("utf-8", errors="ignore")
-    for risky in RISKY_STRINGS:
-        if risky.lower() in text.lower():
-            findings.append("risky_string")
-            break
-    return sorted(set(findings))
-
-
-def _is_unsafe_archive_name(name: str) -> bool:
-    posix = PurePosixPath(name)
-    windows = PureWindowsPath(name)
-    return posix.is_absolute() or windows.is_absolute() or ".." in posix.parts or ".." in windows.parts
 
 
 def _guess_media_type(path: Path, filename: str) -> str:

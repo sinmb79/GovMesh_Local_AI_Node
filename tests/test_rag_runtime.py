@@ -4,7 +4,7 @@ import sys
 from packages.govmesh_common import sha256_file
 from packages.govmesh_policy import scan_text
 from packages.govmesh_rag import KoreanTextChunker, LocalRAGService, MockEmbeddingProvider, SQLiteVectorStore, StoredChunk
-from packages.govmesh_runtime import LocalLlamaCppProvider, MockLLMProvider, generate_with_policy
+from packages.govmesh_runtime import LocalLlamaCppProvider, MockLLMProvider, generate_with_policy, verify_grounding
 
 
 def test_korean_chunker_returns_chunks() -> None:
@@ -72,6 +72,19 @@ def test_runtime_calls_provider_when_policy_allows() -> None:
     assert result["blocked"] is False
     assert provider.called_count == 1
     assert result["evidence_ids"] == ["doc-1#chunk-0000"]
+    assert result["grounding"]["grounded"] is True
+    assert result["needs_review"] is False
+
+
+def test_grounding_requires_available_evidence_ids() -> None:
+    report = verify_grounding(
+        {"text": "answer without the real source", "evidence_ids": ["doc-2#chunk-0000"]},
+        [{"chunk_id": "doc-1#chunk-0000", "snippet": "official evidence"}],
+    )
+
+    assert report["grounded"] is False
+    assert report["requires_review"] is True
+    assert report["missing_evidence_ids"] == ["doc-2#chunk-0000"]
 
 
 def test_sqlite_vector_store_persists_chunks(tmp_path) -> None:

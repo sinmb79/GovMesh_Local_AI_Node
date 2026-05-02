@@ -139,3 +139,19 @@ def test_signed_audit_chain_fails_with_wrong_key(tmp_path) -> None:
     assert chain.head()["signature"] is not None
     assert chain.verify() is True
     assert AuditChain(path, signing_key="wrong-key").verify() is False
+
+
+def test_audit_chain_exports_and_verifies_checkpoint(tmp_path) -> None:
+    path = tmp_path / "audit.jsonl"
+    checkpoint = tmp_path / "checkpoints" / "audit-head.json"
+    chain = AuditChain(path, signing_key="checkpoint-key")
+    chain.append(event_type="node.registered", actor="test-suite", payload={"node": "one"})
+
+    exported = chain.export_checkpoint(checkpoint, label="unit-test")
+
+    assert exported["label"] == "unit-test"
+    assert chain.verify_checkpoint(checkpoint) is True
+
+    chain.append(event_type="node.heartbeat", actor="test-suite", payload={"node": "one"})
+
+    assert chain.verify_checkpoint(checkpoint) is False

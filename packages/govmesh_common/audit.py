@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from packages.govmesh_common.hashing import canonical_json, sha256_text
-from packages.govmesh_common.schemas import AuditEvent
+from packages.govmesh_common.schemas import AuditEvent, utc_now
 
 
 GENESIS_HASH = "0" * 64
@@ -107,6 +107,36 @@ class AuditChain:
             "head_hash": head_hash,
             "signature": self._signature(head_hash),
         }
+
+    def export_checkpoint(self, path: str | Path, *, label: str | None = None) -> dict[str, Any]:
+        """Write a portable audit head checkpoint for external retention."""
+
+        checkpoint = {
+            "schema": "govmesh.audit.checkpoint.v1",
+            "source_path": str(self.path),
+            "label": label,
+            "created_at": utc_now().isoformat(),
+            **self.head(),
+        }
+        checkpoint_path = Path(path)
+        checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        checkpoint_path.write_text(canonical_json(checkpoint) + "\n", encoding="utf-8")
+        return checkpoint
+
+    def verify_checkpoint(self, path: str | Path) -> bool:
+        """Return True when a saved checkpoint matches the current audit head."""
+
+        try:
+            checkpoint = json.loads(Path(path).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return False
+        head = self.head()
+        return (
+            checkpoint.get("schema") == "govmesh.audit.checkpoint.v1"
+            and checkpoint.get("event_count") == head["event_count"]
+            and checkpoint.get("head_hash") == head["head_hash"]
+            and checkpoint.get("signature") == head["signature"]
+        )
 
     def _last_hash(self) -> str:
         events = self.list()

@@ -1,6 +1,7 @@
 """Runtime provider interfaces for GovMesh Local AI Node."""
 
 from packages.govmesh_runtime.model_registry import ModelRecord, ModelRegistry
+from packages.govmesh_runtime.grounding import verify_grounding
 from packages.govmesh_runtime.providers import (
     LLMProvider,
     LocalLlamaCppProvider,
@@ -17,4 +18,5 @@ __all__ = [
     "MockLLMProvider",
     "OllamaProvider",
     "generate_with_policy",
+    "verify_grounding",
 ]

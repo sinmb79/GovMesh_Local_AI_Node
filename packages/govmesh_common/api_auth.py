@@ -7,7 +7,7 @@ import secrets
 from dataclasses import dataclass
 from typing import Iterable
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 
@@ -18,6 +18,7 @@ ALL_ROLES = frozenset({"agent", "operator", "auditor", "importer", "approver"})
 class Principal:
     actor: str
     roles: frozenset[str]
+    client_fingerprint: str | None = None
 
     def has_any_role(self, required_roles: Iterable[str]) -> bool:
         return bool(self.roles.intersection(required_roles))
@@ -30,8 +31,17 @@ class ApiAuthPolicy:
     this module never creates, stores, or logs secrets.
     """
 
-    def __init__(self, token_roles: dict[str, Iterable[str]] | None = None, *, enabled: bool = True) -> None:
+    def __init__(
+        self,
+        token_roles: dict[str, Iterable[str]] | None = None,
+        *,
+        enabled: bool = True,
+        allowed_client_fingerprints: Iterable[str] | None = None,
+    ) -> None:
         self.enabled = enabled
+        self._allowed_client_fingerprints = frozenset(
+            _normalize_fingerprint(fingerprint) for fingerprint in (allowed_client_fingerprints or []) if fingerprint
+        )
         self._token_roles = {
             token: frozenset(roles)
             for token, roles in (token_roles or {}).items()
@@ -69,20 +79,30 @@ class ApiAuthPolicy:
 
         if not token_roles and not required:
             return cls.disabled()
-        return cls(token_roles)
+        allowed_fingerprints = _split_env_list(os.environ.get("GOVMESH_ALLOWED_CLIENT_FINGERPRINTS"))
+        return cls(token_roles, allowed_client_fingerprints=allowed_fingerprints)
 
-    def authenticate(self, token: str | None, required_roles: Iterable[str]) -> Principal:
+    def authenticate(
+        self,
+        token: str | None,
+        required_roles: Iterable[str],
+        *,
+        client_fingerprint: str | None = None,
+    ) -> Principal:
         if not self.enabled:
-            return Principal(actor="anonymous-dev", roles=ALL_ROLES)
+            return Principal(actor="anonymous-dev", roles=ALL_ROLES, client_fingerprint=client_fingerprint)
         if not token:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authorization: Bearer token is required",
             )
+        normalized_fingerprint = _normalize_fingerprint(client_fingerprint) if client_fingerprint else None
+        if self._allowed_client_fingerprints and normalized_fingerprint not in self._allowed_client_fingerprints:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Client certificate fingerprint is not allowed")
         roles = self._lookup_roles(token)
         if roles is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API token")
-        principal = Principal(actor="api-token", roles=roles)
+        principal = Principal(actor="api-token", roles=roles, client_fingerprint=normalized_fingerprint)
         if required_roles and not principal.has_any_role(required_roles):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient API role")
         return principal
@@ -98,8 +118,21 @@ _bearer = HTTPBearer(auto_error=False)
 
 
 def require_roles(policy: ApiAuthPolicy, *required_roles: str):
-    def dependency(credentials: HTTPAuthorizationCredentials | None = Depends(_bearer)) -> Principal:
+    def dependency(
+        credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+        x_client_cert_sha256: str | None = Header(default=None, alias="X-Client-Cert-SHA256"),
+    ) -> Principal:
         token = credentials.credentials if credentials else None
-        return policy.authenticate(token, required_roles)
+        return policy.authenticate(token, required_roles, client_fingerprint=x_client_cert_sha256)
 
     return dependency
+
+
+def _normalize_fingerprint(value: str | None) -> str:
+    return (value or "").replace(":", "").replace(" ", "").lower()
+
+
+def _split_env_list(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [item.strip() for chunk in value.split(";") for item in chunk.split(",") if item.strip()]

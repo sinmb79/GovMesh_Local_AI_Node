@@ -63,6 +63,8 @@ def test_quarantine_gateway_scans_zip_entries(tmp_path) -> None:
 
     assert scanned["media_type"] == "application/zip"
     assert "risky_archive_entry" in scanned["scan_findings"]
+    assert scanned["scan_report"]["passed"] is False
+    assert "archive" in scanned["scan_report"]["scanners"]
 
 
 def test_quarantine_gateway_requires_auth_when_enabled(tmp_path) -> None:

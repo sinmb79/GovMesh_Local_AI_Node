@@ -55,6 +55,23 @@ def test_policy_findings_expose_hash_not_raw_match() -> None:
     assert "test@example.go.kr" not in str(finding)
 
 
+def test_policy_findings_include_recognizer_metadata() -> None:
+    decision = scan_text("resident registration number 900101-1234567")
+
+    finding = next(item for item in decision.findings if item["kind"] == "resident_registration_number")
+    assert finding["metadata"]["recognizer"] == "korean_resident_registration_number"
+    assert "checksum_valid" in finding["metadata"]
+    assert finding["metadata"]["normalized_hash"]
+
+
+def test_policy_detects_business_registration_and_passport_candidates() -> None:
+    decision = scan_text("business number 123-45-67890 and passport M12345678")
+    kinds = {finding["kind"] for finding in decision.findings}
+
+    assert "business_registration_number" in kinds
+    assert "passport_number_candidate" in kinds
+
+
 def test_policy_alert_audit_does_not_store_raw_pii(tmp_path) -> None:
     audit = AuditChain(tmp_path / "audit.jsonl")
     decision = scan_text("주민번호 900101-1234567")

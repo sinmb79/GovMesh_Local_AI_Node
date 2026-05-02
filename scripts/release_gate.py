@@ -66,6 +66,7 @@ def check_required_files() -> tuple[bool, str]:
         "packages/govmesh_rag/service.py",
         "packages/govmesh_runtime/providers.py",
         "scripts/build_evidence_package.py",
+        "scripts/govmesh_doctor.py",
         "scripts/install_windows_service.ps1",
     ]
     missing = [path for path in required if not (ROOT / path).exists()]

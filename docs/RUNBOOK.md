@@ -6,6 +6,12 @@
 python -m pytest
 ```
 
+운영 준비 상태:
+
+```powershell
+python scripts/govmesh_doctor.py
+```
+
 ## Run Benchmark
 
 ```powershell

@@ -82,6 +82,24 @@ def test_control_plane_requires_roles_when_auth_enabled(tmp_path) -> None:
     assert client.get("/audit/verify", headers=AUTH_HEADERS).json() == {"valid": True}
 
 
+def test_control_plane_can_require_client_certificate_fingerprint(tmp_path) -> None:
+    app = create_app(
+        db_path=tmp_path / "control.sqlite3",
+        audit_path=tmp_path / "audit.jsonl",
+        auth_policy=ApiAuthPolicy(
+            {"test-token": {"operator", "auditor"}},
+            allowed_client_fingerprints={"AA:BB:CC"},
+        ),
+    )
+    client = TestClient(app)
+
+    assert client.get("/nodes", headers=AUTH_HEADERS).status_code == 403
+    assert client.get(
+        "/nodes",
+        headers={**AUTH_HEADERS, "X-Client-Cert-SHA256": "aa bb cc"},
+    ).status_code == 200
+
+
 def test_control_plane_filters_and_retries_failed_tasks(tmp_path) -> None:
     app = create_app(db_path=tmp_path / "control.sqlite3", audit_path=tmp_path / "audit.jsonl")
     client = TestClient(app)

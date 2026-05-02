@@ -10,6 +10,12 @@ Authorization: Bearer <govmesh-token>
 
 역할은 `agent`, `operator`, `auditor`, `importer`, `approver`로 나뉩니다. `/health`는 로컬 상태 점검을 위해 공개로 둘 수 있지만, 노드/작업/감사/반입 상태 변경 API는 역할 검사를 통과해야 합니다.
 
+mTLS를 프록시에서 종단하는 환경에서는 다음 헤더를 allowlist 검증에 사용할 수 있습니다.
+
+```http
+X-Client-Cert-SHA256: <client-certificate-sha256>
+```
+
 ## Control Plane
 
 | Method | Path | Purpose |

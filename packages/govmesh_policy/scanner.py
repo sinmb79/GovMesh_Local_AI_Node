@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from dataclasses import field
 from typing import Iterable
 
 from packages.govmesh_common import AuditChain, PolicyDecision, sha256_text
@@ -27,6 +28,7 @@ class PolicyFinding:
     block_reason: str
     confidence: float
     match_hash: str
+    metadata: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -37,6 +39,7 @@ class PolicyFinding:
             "block_reason": self.block_reason,
             "confidence": self.confidence,
             "match_hash": self.match_hash,
+            "metadata": self.metadata,
         }
 
 
@@ -64,6 +67,18 @@ PATTERNS = [
         re.compile(r"\b\d{2,6}-\d{2,6}-\d{2,6}(?:-\d{1,6})?\b"),
         "high",
         "bank_account_candidate_detected",
+    ),
+    PolicyPattern(
+        "business_registration_number",
+        re.compile(r"\b\d{3}-\d{2}-\d{5}\b"),
+        "high",
+        "business_registration_number_detected",
+    ),
+    PolicyPattern(
+        "passport_number_candidate",
+        re.compile(r"\b[MSRGD]\d{8}\b"),
+        "high",
+        "passport_number_candidate_detected",
     ),
     PolicyPattern(
         "internal_document_marker",
@@ -157,6 +172,7 @@ def _find(text: str) -> list[PolicyFinding]:
     findings: list[PolicyFinding] = []
     for policy_pattern in PATTERNS:
         for match in policy_pattern.pattern.finditer(text):
+            metadata = _metadata_for_match(policy_pattern.kind, match.group(0), text, match.start(), match.end())
             findings.append(
                 PolicyFinding(
                     kind=policy_pattern.kind,
@@ -164,8 +180,9 @@ def _find(text: str) -> list[PolicyFinding]:
                     end=match.end(),
                     risk_level=policy_pattern.risk_level,
                     block_reason=policy_pattern.block_reason,
-                    confidence=policy_pattern.confidence,
+                    confidence=_confidence_for_match(policy_pattern.confidence, metadata),
                     match_hash=sha256_text(match.group(0)),
+                    metadata=metadata,
                 )
             )
     return sorted(findings, key=lambda item: (item.start, item.end, item.kind))
@@ -181,3 +198,61 @@ def _first_block_reason(findings: list[PolicyFinding]) -> str | None:
     if not findings:
         return None
     return sorted(findings, key=lambda finding: RISK_ORDER[finding.risk_level], reverse=True)[0].block_reason
+
+
+def _metadata_for_match(kind: str, value: str, text: str, start: int, end: int) -> dict:
+    metadata = {
+        "recognizer": f"korean_{kind}",
+        "context_score": _context_score(kind, text, start, end),
+        "normalized_hash": sha256_text(_digits_only(value) or value.lower()),
+    }
+    if kind == "resident_registration_number":
+        metadata["checksum_valid"] = _rrn_checksum_valid(value)
+    elif kind == "business_registration_number":
+        metadata["checksum_valid"] = _business_registration_checksum_valid(value)
+    return metadata
+
+
+def _confidence_for_match(base_confidence: float, metadata: dict) -> float:
+    confidence = base_confidence + min(0.1, metadata.get("context_score", 0.0) * 0.05)
+    if metadata.get("checksum_valid") is True:
+        confidence += 0.15
+    if metadata.get("checksum_valid") is False:
+        confidence -= 0.05
+    return round(max(0.0, min(0.99, confidence)), 3)
+
+
+def _context_score(kind: str, text: str, start: int, end: int) -> float:
+    window = text[max(0, start - 24) : min(len(text), end + 24)].lower()
+    context_terms = {
+        "resident_registration_number": ("rrn", "resident", "registration", "주민", "주민등록", "생년월일"),
+        "phone_number": ("phone", "tel", "mobile", "전화", "연락처", "휴대폰"),
+        "email": ("email", "mail", "메일", "이메일"),
+        "bank_account_candidate": ("account", "bank", "계좌", "은행", "입금"),
+        "business_registration_number": ("business", "사업자", "등록번호", "사업자등록"),
+        "passport_number_candidate": ("passport", "여권"),
+    }.get(kind, ())
+    return float(sum(1 for term in context_terms if term in window))
+
+
+def _digits_only(value: str) -> str:
+    return "".join(character for character in value if character.isdigit())
+
+
+def _rrn_checksum_valid(value: str) -> bool:
+    digits = _digits_only(value)
+    if len(digits) != 13:
+        return False
+    weights = [2, 3, 4, 5, 6, 7, 8, 9, 2, 3, 4, 5]
+    check = (11 - (sum(int(digit) * weight for digit, weight in zip(digits[:12], weights)) % 11)) % 10
+    return check == int(digits[-1])
+
+
+def _business_registration_checksum_valid(value: str) -> bool:
+    digits = _digits_only(value)
+    if len(digits) != 10:
+        return False
+    weights = [1, 3, 7, 1, 3, 7, 1, 3, 5]
+    products = [int(digit) * weight for digit, weight in zip(digits[:9], weights)]
+    check = (10 - ((sum(products) + products[-1] // 10) % 10)) % 10
+    return check == int(digits[-1])
