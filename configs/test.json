@@ -1,0 +1,12 @@
+{
+  "profile": "test",
+  "bind_host": "127.0.0.1",
+  "control_plane_port": 18787,
+  "quarantine_gateway_port": 18790,
+  "storage_dir": ".govmesh-test",
+  "external_network": "disabled",
+  "allow_public_bind": false,
+  "max_cpu_percent": 80,
+  "default_worker_interval_seconds": 0.1,
+  "approved_model_registry_path": ".govmesh-test/model-registry.json"
+}

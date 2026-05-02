@@ -1,0 +1,100 @@
+from fastapi.testclient import TestClient
+
+from apps.control_plane import create_app
+
+
+def test_control_plane_node_task_audit_and_benchmark_flow(tmp_path) -> None:
+    app = create_app(db_path=tmp_path / "control.sqlite3", audit_path=tmp_path / "audit.jsonl")
+    client = TestClient(app)
+
+    node_response = client.post(
+        "/nodes/register",
+        json={
+            "hostname": "sample-pc",
+            "os": "Windows 11",
+            "agent_version": "0.2.0",
+            "cpu_count": 8,
+            "memory_total_mb": 16384,
+            "disk_free_mb": 100000,
+        },
+    )
+    assert node_response.status_code == 200
+    node_id = node_response.json()["node_id"]
+
+    heartbeat = client.post(f"/nodes/{node_id}/heartbeat", json={"status": "online"})
+    assert heartbeat.status_code == 200
+    assert heartbeat.json()["status"] == "online"
+
+    task_response = client.post("/tasks", json={"task_type": "scan_pii", "payload": {"text": "clean"}})
+    assert task_response.status_code == 200
+    task_id = task_response.json()["task_id"]
+
+    next_response = client.get("/tasks/next", params={"node_id": node_id})
+    assert next_response.status_code == 200
+    assert next_response.json()["assigned_node_id"] == node_id
+
+    result_response = client.post(f"/tasks/{task_id}/result", json={"status": "succeeded", "result": {"ok": True}})
+    assert result_response.status_code == 200
+    assert result_response.json()["status"] == "succeeded"
+
+    benchmark_response = client.post(
+        "/benchmarks",
+        json={"benchmark_type": "pc_profile", "status": "succeeded", "metrics": {"cpu": 8}},
+    )
+    assert benchmark_response.status_code == 200
+    assert client.get("/audit/verify").json() == {"valid": True}
+    assert len(client.get("/audit/events").json()) >= 5
+    assert client.get("/health").json()["schema_version"] == 1
+
+
+def test_control_plane_filters_and_retries_failed_tasks(tmp_path) -> None:
+    app = create_app(db_path=tmp_path / "control.sqlite3", audit_path=tmp_path / "audit.jsonl")
+    client = TestClient(app)
+
+    client.post(
+        "/nodes/register",
+        json={
+            "hostname": "sample-pc",
+            "os": "Windows 11",
+            "agent_version": "0.2.0",
+            "cpu_count": 8,
+            "memory_total_mb": 16384,
+            "disk_free_mb": 100000,
+        },
+    )
+    assert len(client.get("/nodes", params={"status": "registered"}).json()) == 1
+
+    task = client.post("/tasks", json={"task_type": "scan_pii", "payload": {"text": "clean"}}).json()
+    task_id = task["task_id"]
+
+    failed = client.post(
+        f"/tasks/{task_id}/result",
+        json={"status": "failed", "error": "temporary", "retry": True},
+    ).json()
+
+    assert failed["status"] == "queued"
+    assert failed["retry_count"] == 1
+    assert len(client.get("/tasks", params={"status": "queued"}).json()) == 1
+
+
+def test_skill_registry_requires_approval_before_deploy_and_execution(tmp_path) -> None:
+    app = create_app(db_path=tmp_path / "control.sqlite3", audit_path=tmp_path / "audit.jsonl")
+    client = TestClient(app)
+
+    draft = client.post(
+        "/skills/drafts",
+        json={
+            "title": "샘플 검토",
+            "description": "테스트 skill",
+            "body": "검토 절차",
+            "created_by": "tester",
+        },
+    ).json()
+    skill_id = draft["skill_id"]
+
+    assert client.post(f"/skills/{skill_id}/execute-check").status_code == 403
+    assert client.post(f"/skills/{skill_id}/deploy").status_code == 403
+    assert client.post(f"/skills/{skill_id}/review").json()["status"] == "review"
+    assert client.post(f"/skills/{skill_id}/approve", json={"reviewer": "boss"}).json()["status"] == "approved"
+    assert client.post(f"/skills/{skill_id}/deploy").json()["status"] == "deployed"
+    assert client.post(f"/skills/{skill_id}/execute-check").json()["allowed"] is True

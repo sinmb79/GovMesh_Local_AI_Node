@@ -1,0 +1,12 @@
+{
+  "profile": "local",
+  "bind_host": "127.0.0.1",
+  "control_plane_port": 8787,
+  "quarantine_gateway_port": 8790,
+  "storage_dir": ".govmesh-local",
+  "external_network": "disabled",
+  "allow_public_bind": false,
+  "max_cpu_percent": 60,
+  "default_worker_interval_seconds": 5.0,
+  "approved_model_registry_path": ".govmesh-local/model-registry.json"
+}
